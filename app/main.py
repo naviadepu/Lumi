@@ -121,6 +121,15 @@ app = FastAPI(title="Braille Reader", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
+@app.middleware("http")
+async def always_fresh_page(request, call_next):
+    """Make browsers re-check the page and its scripts, so a refresh always gets the latest code."""
+    response = await call_next(request)
+    if request.url.path == "/" or request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
 @app.get("/")
 def index():
     return FileResponse(STATIC_DIR / "index.html")
