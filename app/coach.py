@@ -3,7 +3,7 @@
 Research on adult braille learners (arXiv 2512.03398) found existing tools
 "only flag errors without clarifying rules". Adults also make mirror-image
 errors when learning braille (d/f, e/i, h/j are mirror pairs). So instead
-of "Incorrect", we diagnose the mistake:
+of "Incorrect", we gently diagnose the mistake:
 
     mirror   "Close! You typed F, the mirror image. Swap left and right."
     shifted  "Right shape, but one row too low."
@@ -85,8 +85,8 @@ def check(target, expected, got):
         return {"correct": False, "kind": kind, "spoken": spoken, "text": text}
 
     if not have:
-        return result("empty", f"You didn't press any buttons. {how}",
-                      f"No buttons pressed. Press: {text_dots(want)}")
+        return result("empty", f"No buttons yet. Take your time. {how}",
+                      f"No buttons yet. Press: {text_dots(want)}")
 
     if mirror(expected) == got:
         you_typed = f"You typed {typed}, the mirror image." if typed else "That's the mirror image."
@@ -108,8 +108,8 @@ def check(target, expected, got):
                       f"Almost! Leave out: {text_dots(extra)}")
 
     you_typed = f" You typed {typed}." if typed else ""
-    return result("wrong", f"Incorrect.{you_typed} {how}",
-                  f"Incorrect{f' (that was {typed})' if typed else ''}. Press: {text_dots(want)}")
+    return result("wrong", f"Good try.{you_typed} {how}",
+                  f"Good try{f' (that was {typed})' if typed else ''}. Press: {text_dots(want)}")
 
 
 # ---- hints from braille's structure -------------------------------------------

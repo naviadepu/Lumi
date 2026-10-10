@@ -48,7 +48,7 @@ def test_extra_dot():
 def test_wrong_names_what_was_typed():
     r = check("C", pattern_for("c"), pattern_for("e"))  # c=1,4  e=1,5: mixed missing/extra
     assert r["kind"] == "wrong"
-    assert r["spoken"] == "Incorrect. You typed E. C is: 1, top left. 4, top right."
+    assert r["spoken"] == "Good try. You typed E. C is: 1, top left. 4, top right."
 
 
 def test_digits_named_as_digits():

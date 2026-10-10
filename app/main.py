@@ -20,7 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from app.arduino import ArduinoLink, RemoteParser
-from app.assistant import Assistant, AssistantUnavailable
+from app.assistant import Assistant, AssistantUnavailable, Turn
 from app import coach
 from app.braille import pattern_for, text_to_steps
 from app.tts import ElevenLabsTTS, TTSUnavailable
@@ -198,15 +198,29 @@ def status():
 MAX_RECORDING_BYTES = 5_000_000
 
 
-@app.post("/api/listen")
-async def listen(request: Request, asked: str = Query("", max_length=200)):
-    """Ask mode: raw recording in the body (audio/webm from the mic) -> what to learn, or a question."""
+@app.post("/api/transcribe")
+async def transcribe(request: Request):
+    """Ask mode: raw recording in the body (audio/webm from the mic) -> {"heard": "what they said"}."""
     audio = await request.body()
     if not audio or len(audio) > MAX_RECORDING_BYTES:
         raise HTTPException(status_code=400, detail="Expected a short recording")
     mime_type = request.headers.get("content-type", "audio/webm").split(";")[0]
     try:
-        return await assistant.listen(audio, mime_type, asked)
+        return {"heard": await assistant.transcribe(audio, mime_type)}
+    except AssistantUnavailable as e:
+        log.warning("Ask unavailable: %s", e)
+        raise HTTPException(status_code=503, detail=str(e))
+
+
+class ChatRequest(BaseModel):
+    turns: list[Turn] = Field(min_length=1, max_length=60)
+
+
+@app.post("/api/chat")
+async def chat(req: ChatRequest):
+    """Ask mode: the conversation so far -> {"say", "done"} and "learn" when a lesson should start."""
+    try:
+        return await assistant.chat(req.turns)
     except AssistantUnavailable as e:
         log.warning("Ask unavailable: %s", e)
         raise HTTPException(status_code=503, detail=str(e))

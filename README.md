@@ -2,7 +2,7 @@
 
 A low-cost tool for adults learning grade 1 braille. A voice prompts "Type the letter A."
 and the learner presses the matching dots on a 6-button remote. If it's wrong, the voice
-says which buttons to press ("Incorrect. C is: 1, top left. 4, top right."). If it's
+says which buttons to press ("Good try. C is: 1, top left. 4, top right."). If it's
 right: "Good job! Next is: the letter B."
 
 The buttons are called by number and position ("1, top left"):
@@ -71,16 +71,18 @@ The app opens on a home screen with two hands-free options, and says so:
 *"Hold up any object to the camera, and I'll teach you its name in braille. Or press Enter
 and tell me what you'd like to learn."*
 
-**Ask** (press Enter on the remote, then talk): say what you want to learn. A high beep
+**Ask** (press Enter on the remote, then talk): have a conversation with Lumi. A high beep
 means it's listening; it stops by itself when you stop talking (low beep). ElevenLabs
-speech-to-text (`scribe_v2`) hears you and Gemini works out what to teach, asking a
-follow-up when it needs one:
+speech-to-text (`scribe_v2`) hears you and Gemini replies to the whole conversation so far,
+then Lumi listens again. Ask it anything, chat, or ask for a lesson:
 
-> "How do I write my name in braille?" -> "What is your name?" -> "Navi" ->
+> "Hi Lumi, how are you?" -> "I'm doing great, thanks for asking! How are you today?" ->
+> "What is braille?" -> "A system of raised dots you read with your fingertips. ..." ->
+> "How do I write my name?" -> "I'd love to help. What's your name?" -> "Navi" ->
 > "Let's write your name, Navi. N, A, V, I. Type the letter N. Feel it on the wheel."
 
-"Teach me the word pencil" starts right away; anything off-topic gets steered back
-("What would you like to learn to write in braille?").
+The conversation ends when you go quiet or say goodbye. Press Enter while Lumi is talking
+to cut in.
 
 **Snap** (automatic): learn a word from the real world. Hold an object up to the
 camera and keep it still for about a second; no button needed. The page watches for
@@ -92,7 +94,7 @@ camera opens for the next thing.
 | Remote | Keyboard | Action |
 | --- | --- | --- |
 | (nothing) | (nothing) | Hold the object still: it looks automatically |
-| Enter | Enter or Space | Talk (Ask). Press again to stop early |
+| Enter | Enter or Space | Talk (Ask). Press again to stop early, or to cut in while Lumi talks |
 | | "Look now" button | Take the photo right away |
 | | Escape | Text screen (for sighted helpers: Learn, Read, Type) |
 
@@ -119,7 +121,7 @@ number sign (dots 3-4-5-6), then the digit.
 | Right shape, wrong row | "Close! Right shape, but one row too low." |
 | Left out a dot | "Almost! Also press: 3, bottom left." |
 | Added a dot | "Almost! Leave out: 5, middle right." |
-| Anything else | "Incorrect. You typed E. C is: 1, top left. 4, top right." |
+| Anything else | "Good try. You typed E. C is: 1, top left. 4, top right." |
 
 New letters come with a hint from braille's structure ("K is A plus bottom left",
 "U is A plus both bottom dots", "4 uses the same dots as D"). Letters you miss come back
@@ -274,7 +276,7 @@ browser (app/static)  --HTTP-->  FastAPI (app/main.py)  --HTTPS-->  ElevenLabs (
 | File | What it does |
 | --- | --- |
 | `app/braille.py` | Braille table and text -> list of cells (number sign, spaces) |
-| `app/assistant.py` | Ask: ElevenLabs speech-to-text + Gemini decide what to teach or ask next |
+| `app/assistant.py` | Ask: ElevenLabs speech-to-text + a Gemini conversation that can start lessons |
 | `app/vision.py` | Snap: Gemini reads a webcam photo and picks a word to learn |
 | `app/coach.py` | Mistake diagnosis (mirror, shifted, missing/extra dots) and memory hints |
 | `app/tts.py` | ElevenLabs Python SDK call + audio cache (memory and `audio_cache/` on disk) |

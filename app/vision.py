@@ -37,7 +37,7 @@ The braille wheel can only show these letters: {letters}.
 2. Otherwise use the plain name of the object anyway, for example "mug" or "keys".
 Never make up a word that doesn't fit the object just to match the letters.
 The word must be letters a-z only, at most {MAX_WORD_LETTERS} letters.
-Also write a short, friendly description, under 12 words, starting with "I see",
+Also write a short, warm, friendly description, under 12 words, starting with "I see",
 for example "I see a pen." Never identify a person from their face."""
 
 

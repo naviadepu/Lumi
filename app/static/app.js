@@ -136,8 +136,26 @@ function replayIfBlocked() {
 document.addEventListener("pointerdown", replayIfBlocked);
 document.addEventListener("keydown", replayIfBlocked);
 
+// /speak takes up to 200 characters, so longer replies are spoken a sentence at a time.
+const MAX_SPEAK_CHARS = 200;
+function speakable(text) {
+  if (text.length <= MAX_SPEAK_CHARS) return [text];
+  const sentences = text.match(/[^.!?]+[.!?]*\s*/g) || [text];
+  return sentences.flatMap((sentence) => {
+    const pieces = [];
+    for (let rest = sentence.trim(); rest; ) {
+      const space = rest.lastIndexOf(" ", MAX_SPEAK_CHARS);
+      const cut = rest.length <= MAX_SPEAK_CHARS ? rest.length : space > 0 ? space : MAX_SPEAK_CHARS;
+      pieces.push(rest.slice(0, cut).trim());
+      rest = rest.slice(cut).trim();
+    }
+    return pieces;
+  }).filter(Boolean);
+}
+
 // Speak a list of phrases in order, e.g. ["Space", "Letter B"].
 async function say(parts) {
+  parts = parts.flatMap(speakable);
   lastSpoken = parts;
   const token = ++playToken;
   stopSpeech();
@@ -283,8 +301,8 @@ async function coachCheck(step, answer) {
   const correct = answer === step.pattern;
   return {
     correct,
-    spoken: correct ? "Good job!" : `Incorrect. ${buttonsToPress(step.pattern)}`,
-    text: correct ? "Good job!" : "Incorrect. Press: " + raisedDots(step.pattern).map(dotText).join(", "),
+    spoken: correct ? "Good job!" : `Good try. ${buttonsToPress(step.pattern)}`,
+    text: correct ? "Good job!" : "Good try. Press: " + raisedDots(step.pattern).map(dotText).join(", "),
   };
 }
 
@@ -292,12 +310,12 @@ function lessonSummary() {
   const total = lessonSteps.filter((s) => !s.is_number_sign).length;
   const missed = Object.values(mistakes).reduce((a, b) => a + b, 0);
   const things = total === 1 ? "1 character" : `${total} characters`;
-  if (!missed) return { spoken: `Lesson complete! ${things}, no mistakes. Perfect.`, text: `Lesson complete! ${things}, no mistakes.` };
+  if (!missed) return { spoken: `Lesson complete! ${things}, all on the first try. Wonderful.`, text: `Lesson complete! ${things}, all on the first try.` };
   const [trickiest] = Object.entries(mistakes).sort((a, b) => b[1] - a[1])[0];
   const name = nameOf({ char: trickiest, is_number_sign: trickiest === "#" });
   return {
-    spoken: `Lesson complete! ${things}, ${missed} ${missed === 1 ? "mistake" : "mistakes"}. Trickiest: ${name}.`,
-    text: `Lesson complete! ${things} · ${missed} ${missed === 1 ? "mistake" : "mistakes"} · trickiest: ${name.replace(/^the /, "")}`,
+    spoken: `Lesson complete! You practiced ${things}. Nice work. One to keep practicing: ${name}.`,
+    text: `Lesson complete! ${things} practiced · keep practicing: ${name.replace(/^the /, "")}`,
   };
 }
 
@@ -417,8 +435,8 @@ function showTypeCommit(result, mask) {
   } else if (result.kind === "number") {
     say(["Number sign"]);
   } else {
-    feedbackEl.textContent = "No braille character for " + raisedDots(patternFromMask(mask)).map(dotText).join(", ");
-    say(["No match"]);
+    feedbackEl.textContent = "Not a letter yet: " + raisedDots(patternFromMask(mask)).map(dotText).join(", ");
+    say(["That isn't a letter yet. Try again."]);
   }
   renderType();
 }
@@ -833,9 +851,10 @@ function stopWatching() {
 
 // ---------------------------------------------------------------- ask (voice)
 //
-// Press Enter (remote or keyboard), hear a beep, and say what you want to learn:
-// "How do I write my name in braille?" -> "What's your name?" -> "Navi" -> lesson.
-// ElevenLabs turns speech into text; Gemini decides what to teach or what to ask next.
+// Press Enter (remote or keyboard), hear a beep, and talk to Lumi like a person:
+// "What is braille?" -> an answer -> "How do I write my name?" -> "What's your name?" -> lesson.
+// After each reply it listens again, until they go quiet or say goodbye.
+// ElevenLabs turns speech into text; Gemini replies to the whole conversation.
 
 const MIN_SPEECH_LEVEL = 0.01; // mic loudness (RMS) that always counts as talking...
 const NOISE_MULTIPLE = 3;      // ...or this many times the room's background noise, if louder
@@ -843,7 +862,7 @@ const NOISE_SAMPLE_MS = 250;   // background noise is measured right after the b
 const END_SILENCE_MS = 1200; // stop recording after this much quiet once they've spoken
 const NO_SPEECH_MS = 6000;   // give up if nothing is said for this long
 const MAX_RECORD_MS = 10000;
-const MAX_QUESTIONS = 3;     // follow-up questions in one conversation
+const MAX_TURNS = 20;        // back-and-forths in one conversation
 
 let micStream = null;
 let talking = false;   // in a conversation: automatic looks are ignored
@@ -935,10 +954,16 @@ function resumeScanning() {
   }
 }
 
-// One back-and-forth: listen, then either start the lesson or ask a follow-up and listen again.
+// A conversation: listen, reply, listen again, until they go quiet, say goodbye or ask for a lesson.
+let lumiSpeaking = false;
 async function talk() {
   if (listening) {
     stopRecording = true; // Enter again = "I'm done talking"
+    return;
+  }
+  if (lumiSpeaking) {
+    playToken++; // Enter while Lumi talks = cut in and listen
+    stopSpeech();
     return;
   }
   if (talking) return;
@@ -957,9 +982,15 @@ async function talk() {
   }
 }
 
+async function postJson(url, body, headers = { "Content-Type": "application/json" }) {
+  const r = await fetch(url, { method: "POST", headers, body });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
 async function conversation() {
-  let asked = "";
-  for (let turn = 0; turn <= MAX_QUESTIONS; turn++) {
+  const turns = []; // [{role: "user" | "assistant", text}]
+  for (let turn = 0; turn < MAX_TURNS; turn++) {
     let audio;
     try {
       audio = await record();
@@ -971,39 +1002,45 @@ async function conversation() {
     }
     if (!cameraOpen()) return; // they left the screen while it was listening
     if (!audio) {
-      say(["I didn't hear anything. Press Enter to try again."]);
+      // Quiet after a chat just means they're done; quiet at the start may be a mic problem.
+      say([turns.length ? "I'm here whenever you want to talk. Just press Enter." : "I didn't hear anything. Press Enter to try again."]);
       return resumeScanning();
     }
 
     cameraStatus.textContent = "Thinking...";
-    let result;
+    let heard, result;
     try {
-      const r = await fetch(`/api/listen?asked=${encodeURIComponent(asked)}`, {
-        method: "POST",
-        headers: { "Content-Type": audio.type || "audio/webm" },
-        body: audio,
-      });
-      if (!r.ok) throw new Error(await r.text());
-      result = await r.json();
+      ({ heard } = await postJson("/api/transcribe", audio, { "Content-Type": audio.type || "audio/webm" }));
+      if (heard) {
+        turns.push({ role: "user", text: heard.slice(0, 1000) });
+        result = await postJson("/api/chat", JSON.stringify({ turns: turns.slice(-40) }));
+      }
     } catch (error) {
-      reportToServer(`listen failed: ${error.message}`);
-      say(["Sorry, I couldn't understand that. Press Enter to try again."]);
+      reportToServer(`talk failed: ${error.message}`);
+      say(["Sorry, something went wrong on my side. Press Enter to try again."]);
       return resumeScanning();
     }
-    if (!result.heard) {
-      say(["I didn't catch that. Press Enter to try again."]);
-      return resumeScanning();
+    if (!cameraOpen()) return;
+    if (!heard) {
+      await say(["Sorry, I didn't catch that. Could you say it again?"]);
+      if (!cameraOpen()) return;
+      continue;
     }
 
+    turns.push({ role: "assistant", text: result.say });
     if (result.learn) return startSpokenLesson(result.learn, result.say);
 
-    // A follow-up question ("What's your name?"): ask it, then listen for the answer.
-    asked = result.question;
-    cameraStatus.textContent = `You said: "${result.heard}". ${asked}`;
-    await say([asked]);
+    cameraStatus.textContent = `You said: "${heard}". Lumi: ${result.say}`;
+    lumiSpeaking = true;
+    try {
+      await say([result.say]);
+    } finally {
+      lumiSpeaking = false;
+    }
     if (!cameraOpen()) return; // they left the screen meanwhile
+    if (result.done) return resumeScanning();
   }
-  say(["Let's try again. Press Enter and tell me what you'd like to learn."]);
+  say(["That was a lovely chat. Press Enter any time to talk again."]);
   resumeScanning();
 }
 

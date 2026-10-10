@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.assistant import Assistant, AssistantUnavailable
+from app.assistant import Assistant, AssistantUnavailable, Turn
 
 
 def make(heard, reply_json):
@@ -28,41 +28,63 @@ def run(coro):
     return asyncio.run(coro)
 
 
+def said(*texts):
+    """said("hi", "Hello!", "teach me cat") -> alternating user / assistant turns."""
+    return [Turn(role="user" if i % 2 == 0 else "assistant", text=t) for i, t in enumerate(texts)]
+
+
 def test_needs_both_keys():
     with pytest.raises(AssistantUnavailable):
-        run(Assistant("", "", "m").listen(b"audio", "audio/webm"))
+        run(Assistant("", "", "m").transcribe(b"audio", "audio/webm"))
+    with pytest.raises(AssistantUnavailable):
+        run(Assistant("", "", "m").chat(said("hi")))
 
 
-def test_asks_a_follow_up_question():
-    a, calls = make("How do I write my name in braille?", '{"learn": "", "question": "What is your name?", "reply": ""}')
-    assert run(a.listen(b"audio", "audio/webm")) == {"heard": "How do I write my name in braille?", "question": "What is your name?"}
+def test_transcribes_with_scribe():
+    a, calls = make("What is braille?", "{}")
+    assert run(a.transcribe(b"audio", "audio/webm")) == "What is braille?"
     assert calls["stt"]["model_id"] == "scribe_v2"
 
 
-def test_answer_becomes_the_lesson_and_question_is_passed_on():
-    a, calls = make("Na'vi", '{"learn": "Navi", "question": "", "reply": "Let\'s write your name, Navi."}')
-    result = run(a.listen(b"audio", "audio/webm", asked="What is your name?"))
-    assert result == {"heard": "Na'vi", "learn": "Navi", "say": "Let's write your name, Navi."}
-    assert "What is your name?" in calls["gemini"]["contents"][1]
+def test_replies_to_anything_and_keeps_talking():
+    a, calls = make("", '{"reply": "Braille is reading by touch, with raised dots.", "learn": "", "done": false}')
+    result = run(a.chat(said("What is braille?")))
+    assert result == {"say": "Braille is reading by touch, with raised dots.", "done": False}
+    assert "Lumi" in calls["gemini"]["config"].system_instruction
+
+
+def test_whole_conversation_is_sent_with_roles():
+    a, calls = make("", '{"reply": "Let\'s write your name, Navi.", "learn": "Navi", "done": false}')
+    result = run(a.chat(said("How do I write my name?", "What's your name?", "Na'vi")))
+    assert result == {"say": "Let's write your name, Navi.", "learn": "Navi", "done": False}
+    contents = calls["gemini"]["contents"]
+    assert [c.role for c in contents] == ["user", "model", "user"]
+    assert contents[1].parts[0].text == "What's your name?"
+
+
+def test_conversation_starts_with_the_learner():
+    a, calls = make("", '{"reply": "Hi!", "learn": "", "done": false}')
+    run(a.chat([Turn(role="assistant", text="Hello"), *said("hi")]))
+    assert calls["gemini"]["contents"][0].role == "user"
+
+
+def test_goodbye_ends_the_conversation():
+    a, _ = make("", '{"reply": "Bye for now, Navi!", "learn": "", "done": true}')
+    assert run(a.chat(said("that's all, thanks")))["done"] is True
 
 
 def test_lesson_text_is_cleaned_and_capped():
-    a, _ = make("teach me", '{"learn": "Hello, world!!! and much more text", "question": "", "reply": ""}')
-    result = run(a.listen(b"audio", "audio/webm"))
+    a, _ = make("", '{"reply": "", "learn": "Hello, world!!! and much more text", "done": false}')
+    result = run(a.chat(said("teach me")))
     assert result["learn"] == "Hello world and much"
     assert result["say"] == "Let's write Hello world and much."
 
 
-def test_silence_is_heard_as_nothing():
-    a, _ = make("", "{}")
-    assert run(a.listen(b"audio", "audio/webm")) == {"heard": ""}
-
-
 def test_suggestions_are_checked_against_the_wheel():
-    a, _ = make("teach me a fruit", '{"learn": "", "question": "", "reply": "", "suggestions": ["apple", "pear", "banana"]}')
-    assert run(a.listen(b"audio", "audio/webm"))["question"] == "How about apple or banana? Which one?"
+    a, _ = make("", '{"reply": "Fruit is a fun one.", "learn": "", "suggestions": ["apple", "pear", "banana"], "done": false}')
+    assert run(a.chat(said("teach me a fruit")))["say"] == "Fruit is a fun one. How about apple or banana? Which one?"
 
 
 def test_no_valid_suggestion_falls_back_with_the_lead_in():
-    a, _ = make("an animal", '{"learn": "", "question": "none fit", "reply": "", "suggestions": ["cat", "dog"]}')
-    assert run(a.listen(b"audio", "audio/webm"))["question"] == "Your wheel can't spell that yet. How about pen, apple or ball? Which one?"
+    a, _ = make("", '{"reply": "", "learn": "", "suggestions": ["cat", "dog"], "done": false}')
+    assert run(a.chat(said("an animal")))["say"] == "That one isn't on your wheel yet. How about pen, apple or ball? Which one?"

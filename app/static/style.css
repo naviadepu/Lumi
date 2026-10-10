@@ -457,10 +457,12 @@ textarea {
 
 .char, .grids, .position, .feedback, .typed-text { position: relative; z-index: 1; }
 
-/* The one bold thing: the letter, lit softly from within */
+/* The one bold thing: the letter, lit softly from within.
+   It gets whatever height the dots, text and buttons leave, so nothing below it overlaps. */
 .char {
-  font-size: 40vh;
-  height: 40vh;
+  --char-size: clamp(140px, calc(100vh - 600px), 36vh);
+  font-size: var(--char-size);
+  height: var(--char-size);
   font-weight: 300;
   letter-spacing: 0;
   line-height: 1;
@@ -535,7 +537,7 @@ textarea {
 }
 
 /* Type mode */
-#reader-screen[data-mode="type"] .char { font-size: 30vh; height: 30vh; }
+#reader-screen[data-mode="type"] .char { --char-size: clamp(120px, calc(100vh - 650px), 30vh); }
 #reader-screen[data-mode="type"] .feedback:empty { display: none; }
 
 .badges {
@@ -584,6 +586,7 @@ textarea {
   justify-content: center;
   flex-wrap: wrap;
   gap: 12px;
+  margin-top: 2vh;
 }
 
 /* ---- Small screens ---- */
@@ -596,7 +599,7 @@ textarea {
   .glass-button { --tile: 88px; font-size: 1rem; border-radius: 22px; }
   /* Let screens grow and scroll instead of squeezing */
   #reader-screen, #camera-screen { height: auto; min-height: 100vh; padding: 72px 16px 3vh; }
-  .char { font-size: 30vh; height: 30vh; }
+  .char { --char-size: 30vh; }
   .grids { gap: 12vw; padding: 2vh 7vw; }
   .icon-bubble.big { width: 52px; height: 52px; }
   .stage { gap: 8px; }
