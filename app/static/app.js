@@ -1,9 +1,11 @@
 // Braille Reader front end. Plain JavaScript, no build step.
 //
-// Two modes share one screen:
-//   Learn: "Type the letter A." The user presses dot buttons (remote or keyboard)
-//          and Enter. Wrong -> we say which buttons to press. Right -> next letter.
+// Three modes share one screen (elements with data-show="..." only appear in those modes):
+//   Learn: "Type the letter A." The user presses dots (remote or keyboard) and Enter.
+//          Wrong -> we say which buttons to press. Right -> next letter.
 //   Read:  show and speak each character of the text, one at a time.
+//   Type:  free typing with the remote, like braille_interface.html: live cell,
+//          preview of what Enter will type, capital/number badges, typed text.
 
 const $ = (id) => document.getElementById(id);
 
@@ -16,15 +18,21 @@ const charEl = $("char");
 const cellEl = $("cell");
 const positionEl = $("position");
 const feedbackEl = $("feedback");
+const typedTextEl = $("typed-text");
 const statusEl = $("arduino-status");
 const targetDots = [...cellEl.querySelectorAll(".dot")];
 const inputDots = [...document.querySelectorAll(".dot-button")];
 
-let mode = "learn";    // "learn" or "read"
+let mode = "learn";    // "learn", "read" or "type"
 let steps = [];        // [{char, spoken, pattern, is_number_sign, space_before}]
 let index = 0;
 let entered = [false, false, false, false, false, false]; // dots 1-6 the user pressed
 let elevenLabsEnabled = true;
+
+// Type mode state (the remote keeps its own copy and reports it in "mode" messages).
+let typedText = "";
+let capitalNext = false;
+let numberMode = false;
 
 // Buttons are named by position on the remote, not by dot number.
 const ROW = { 1: "top", 2: "middle", 3: "bottom", 4: "top", 5: "middle", 6: "bottom" };
@@ -34,6 +42,11 @@ const dotName = (n) => capitalize(`${ROW[n]} ${COLUMN[n]}`);
 
 // Keyboard stand-ins for the remote: 1-6, or the standard braille keys F D S / J K L.
 const DOT_KEYS = { 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, f: 1, d: 2, s: 3, j: 4, k: 5, l: 6 };
+
+// Patterns are "101010" strings (dots 1-6). The remote sends bitmasks (bit 0 = dot 1).
+const patternFromMask = (mask) => [0, 1, 2, 3, 4, 5].map((i) => (mask >> i) & 1).join("");
+const enteredPattern = () => entered.map((on) => (on ? "1" : "0")).join("");
+const enteredMask = () => entered.reduce((mask, on, i) => mask | (on ? 1 << i : 0), 0);
 
 // ---------------------------------------------------------------- speech
 
@@ -114,6 +127,7 @@ function describeDots(pattern) {
 function render() {
   const step = steps[index];
   charEl.textContent = step.char;
+  charEl.classList.remove("small");
   charEl.setAttribute("aria-label", step.spoken);
   for (const dot of targetDots) {
     dot.classList.toggle("raised", step.pattern[dot.dataset.dot - 1] === "1");
@@ -129,6 +143,7 @@ function renderInput() {
     dot.classList.toggle("raised", on);
     dot.setAttribute("aria-pressed", String(on));
   }
+  if (mode === "type") renderType();
 }
 
 function sendToArduino(step) {
@@ -137,6 +152,37 @@ function sendToArduino(step) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ char: step.char, pattern: step.pattern }),
   }).catch(() => {});
+}
+
+// ---------------------------------------------------------------- dot input (Learn + Type)
+
+function clearInput() {
+  entered = entered.map(() => false);
+  renderInput();
+}
+
+// Keyboard, on-screen click, or "DOT n" test line: the page holds the cell.
+function toggleDot(n) {
+  if (mode === "read") return;
+  entered[n - 1] = !entered[n - 1];
+  feedbackEl.textContent = "";
+  renderInput();
+  say([entered[n - 1] ? dotName(n) : `${dotName(n)} off`]);
+}
+
+// braille_remote.ino holds the cell itself and reports the whole bitmask.
+function setCellFromRemote(mask, quiet) {
+  if (mode === "read") return;
+  const before = entered;
+  entered = [0, 1, 2, 3, 4, 5].map((i) => Boolean(mask & (1 << i)));
+  const changed = [0, 1, 2, 3, 4, 5].filter((i) => before[i] !== entered[i]);
+  renderInput();
+  // One dot added or removed by the user: say which. (Clearing after Enter is "quiet".)
+  if (!quiet && changed.length === 1) {
+    const n = changed[0] + 1;
+    feedbackEl.textContent = "";
+    say([entered[n - 1] ? dotName(n) : `${dotName(n)} off`]);
+  }
 }
 
 // ---------------------------------------------------------------- learn mode
@@ -155,28 +201,13 @@ function buttonsToPress(pattern) {
   return raisedDots(pattern).map((n) => `${capitalize(ROW[n])}, ${COLUMN[n]}.`).join(" ");
 }
 
-function clearInput() {
-  entered = entered.map(() => false);
-  renderInput();
-}
-
-function toggleDot(n) {
-  if (mode !== "learn") return;
-  entered[n - 1] = !entered[n - 1];
-  renderInput();
-  feedbackEl.textContent = "";
-  say([entered[n - 1] ? dotName(n) : `${dotName(n)} off`]);
-}
-
-function checkAnswer() {
+function checkAnswer(answer = enteredPattern()) {
   const step = steps[index];
-  const answer = entered.map((on) => (on ? "1" : "0")).join("");
   clearInput();
 
   if (answer !== step.pattern) {
-    const help = buttonsToPress(step.pattern);
     feedbackEl.textContent = "Incorrect. Press: " + raisedDots(step.pattern).map(dotName).join(", ");
-    say([`Incorrect. ${help}`]);
+    say([`Incorrect. ${buttonsToPress(step.pattern)}`]);
     return;
   }
 
@@ -198,6 +229,101 @@ function prefetchLearn() {
   if (upcoming) getAudioUrl(`Good job! Next is: ${nameOf(upcoming)}`);
 }
 
+// ---------------------------------------------------------------- type mode
+
+// Same table as braille_remote.ino, so the preview matches what the remote types.
+const CAPITAL_SIGN_MASK = 32; // dot 6
+const NUMBER_SIGN_MASK = 60;  // dots 3-4-5-6
+const LETTER_MASKS = [1, 3, 9, 25, 17, 11, 27, 19, 10, 26, 5, 7, 13, 29, 21, 15, 31, 23, 14, 30, 37, 39, 58, 45, 61, 53];
+const CHAR_FOR_MASK = { 0: " ", 2: ",", 6: ";", 18: ":", 50: ".", 22: "!", 38: "?", 4: "'", 36: "-" };
+LETTER_MASKS.forEach((mask, i) => { CHAR_FOR_MASK[mask] = "abcdefghijklmnopqrstuvwxyz"[i]; });
+
+const PUNCTUATION_NAMES = {
+  ",": "comma", ";": "semicolon", ":": "colon", ".": "period",
+  "!": "exclamation mark", "?": "question mark", "'": "apostrophe", "-": "dash",
+};
+
+// What Enter would produce for this cell: {kind: "char" | "capital" | "number" | "none", char}
+function decodeCell(mask) {
+  if (mask === CAPITAL_SIGN_MASK) return { kind: "capital" };
+  if (mask === NUMBER_SIGN_MASK) return { kind: "number" };
+  let char = CHAR_FOR_MASK[mask];
+  if (char === undefined) return { kind: "none" };
+  const aToJ = "abcdefghij".indexOf(char);
+  if (numberMode && aToJ >= 0) return { kind: "char", char: String((aToJ + 1) % 10) };
+  if (capitalNext) char = char.toUpperCase();
+  return { kind: "char", char };
+}
+
+function spokenName(char) {
+  if (char === " ") return "Space";
+  if (/[0-9]/.test(char)) return `Number ${char}`;
+  if (/[A-Z]/.test(char)) return `Capital ${char}`;
+  if (/[a-z]/.test(char)) return `Letter ${char.toUpperCase()}`;
+  return PUNCTUATION_NAMES[char] || char;
+}
+
+function renderType() {
+  const result = decodeCell(enteredMask());
+  const preview =
+    result.kind === "capital" ? "Capital sign" :
+    result.kind === "number" ? "Number sign" :
+    result.kind === "none" ? "No match" :
+    result.char === " " ? "Space" : result.char;
+  charEl.textContent = preview;
+  charEl.classList.toggle("small", preview.length > 1);
+  charEl.setAttribute("aria-label", "Enter will type: " + preview);
+  $("capital-badge").classList.toggle("on", capitalNext);
+  $("number-badge").classList.toggle("on", numberMode);
+  typedTextEl.textContent = typedText;
+}
+
+// Show and speak a committed cell. The remote decodes it itself; the keyboard uses decodeCell.
+function showTypeCommit(result, mask) {
+  if (result.kind === "char") {
+    typedText += result.char;
+    feedbackEl.textContent = "";
+    say([spokenName(result.char)]);
+  } else if (result.kind === "capital") {
+    say(["Capital sign"]);
+  } else if (result.kind === "number") {
+    say(["Number sign"]);
+  } else {
+    feedbackEl.textContent = "No braille character for " + raisedDots(patternFromMask(mask)).map(dotName).join(", ");
+    say(["No match"]);
+  }
+  renderType();
+}
+
+// Keyboard / on-screen Enter in Type mode. Mirrors the sketch's commit().
+function typeEnter() {
+  const mask = enteredMask();
+  const result = decodeCell(mask);
+  if (result.kind === "capital") capitalNext = true;
+  if (result.kind === "number") numberMode = true;
+  if (result.kind === "char") {
+    if (!/[0-9]/.test(result.char)) numberMode = false; // space or any non a-j ends numbers
+    capitalNext = false;
+  }
+  entered = entered.map(() => false);
+  renderInput();
+  showTypeCommit(result, mask);
+}
+
+function backspace() {
+  if (!typedText) return say(["Nothing to delete"]);
+  const removed = typedText.slice(-1);
+  typedText = typedText.slice(0, -1);
+  renderType();
+  say([`Deleted ${spokenName(removed)}`]);
+}
+
+function clearTyped() {
+  typedText = "";
+  renderType();
+  say(["Cleared"]);
+}
+
 // ---------------------------------------------------------------- navigation
 
 function goTo(newIndex, crossedSpace) {
@@ -216,21 +342,25 @@ function goTo(newIndex, crossedSpace) {
 }
 
 function next() {
+  if (mode === "type") return;
   if (index >= steps.length - 1) return say(["End of text"]);
   goTo(index + 1, steps[index + 1].space_before);
 }
 
 function prev() {
+  if (mode === "type") return;
   if (index <= 0) return say(["Start of text"]);
   goTo(index - 1, steps[index].space_before);
 }
 
 function repeat() {
+  if (mode === "type") return say([typedText.trim() ? typedText.slice(-150) : "Nothing typed yet"]);
   say([mode === "learn" ? promptFor(steps[index]) : steps[index].spoken]);
 }
 
 function enter() {
   if (mode === "learn") checkAnswer();
+  else if (mode === "type") typeEnter();
   else next();
 }
 
@@ -238,8 +368,29 @@ function readerOpen() {
   return !readerScreen.hidden;
 }
 
+function openReader(newMode) {
+  mode = newMode;
+  readerScreen.dataset.mode = mode;
+  for (const el of readerScreen.querySelectorAll("[data-show]")) {
+    el.hidden = !el.dataset.show.split(" ").includes(mode);
+  }
+  feedbackEl.textContent = "";
+  inputScreen.hidden = true;
+  readerScreen.hidden = false;
+  $({ learn: "check-button", read: "next-button", type: "enter-button" }[mode]).focus();
+}
+
 async function start(newMode) {
   formError.textContent = "";
+  if (newMode === "type") {
+    typedText = "";
+    capitalNext = numberMode = false; // the remote re-syncs these on its next Enter
+    openReader("type");
+    clearInput();
+    say(["Start typing. Press Enter after each letter."]);
+    return;
+  }
+
   let data;
   try {
     const r = await fetch("/api/steps", {
@@ -260,12 +411,8 @@ async function start(newMode) {
     textInput.focus();
     return;
   }
-  mode = newMode;
   steps = usable;
-  readerScreen.classList.toggle("reading", mode === "read");
-  inputScreen.hidden = true;
-  readerScreen.hidden = false;
-  $(mode === "learn" ? "check-button" : "next-button").focus();
+  openReader(newMode);
   goTo(0, false);
 }
 
@@ -294,7 +441,10 @@ textInput.addEventListener("keydown", (e) => {
 
 $("prev-button").addEventListener("click", prev);
 $("next-button").addEventListener("click", next);
-$("check-button").addEventListener("click", checkAnswer);
+$("check-button").addEventListener("click", () => checkAnswer());
+$("enter-button").addEventListener("click", typeEnter);
+$("backspace-button").addEventListener("click", backspace);
+$("clear-button").addEventListener("click", clearTyped);
 $("repeat-button").addEventListener("click", repeat);
 $("back-button").addEventListener("click", backToInput);
 for (const dot of inputDots) {
@@ -314,13 +464,14 @@ document.addEventListener("keydown", (e) => {
   const onButton = e.target.closest?.("button");
   let action = SHORTCUTS[e.key];
 
-  if (mode === "learn") {
+  if (mode === "read") {
+    if (e.key === " ") action = next; // Space is always "next"
+  } else {
     const dot = DOT_KEYS[e.key.toLowerCase()];
     if (dot) action = () => toggleDot(dot);
-    // Enter/Space check the answer, unless a button has focus (then it's pressed as normal).
-    if ((e.key === "Enter" || e.key === " ") && !onButton) action = checkAnswer;
-  } else if (e.key === " ") {
-    action = next; // Read mode: Space is always "next"
+    // Enter/Space commit the cell, unless a button has focus (then it's pressed as normal).
+    if ((e.key === "Enter" || e.key === " ") && !onButton) action = enter;
+    if (mode === "type" && e.key === "Backspace") action = backspace;
   }
 
   if (!action) return;
@@ -338,19 +489,42 @@ document.addEventListener("keyup", (e) => {
 function setArduinoStatus(connected) {
   statusEl.textContent = connected ? "Arduino: connected" : "Arduino: not connected";
   // A freshly plugged-in board is blank, so send it the current character.
-  if (connected && readerOpen()) sendToArduino(steps[index]);
+  if (connected && readerOpen() && mode !== "type") sendToArduino(steps[index]);
+}
+
+// A cell committed on braille_remote.ino (Enter pressed on the remote).
+function remoteCommit(msg) {
+  if (mode === "learn") {
+    checkAnswer(patternFromMask(msg.mask));
+  } else if (mode === "type") {
+    const result =
+      msg.char !== null ? { kind: "char", char: msg.char } :
+      msg.mask === CAPITAL_SIGN_MASK ? { kind: "capital" } :
+      msg.mask === NUMBER_SIGN_MASK ? { kind: "number" } : { kind: "none" };
+    showTypeCommit(result, msg.mask);
+  } else {
+    next();
+  }
 }
 
 // Remote buttons arrive here and do exactly what the keyboard does.
 const BUTTONS = { next, prev, repeat, enter };
 
 function handleRemote(msg) {
+  if (msg.type === "mode") {
+    capitalNext = msg.capital;
+    numberMode = msg.number;
+    if (readerOpen() && mode === "type") renderType();
+    return;
+  }
   if (!readerOpen()) {
-    // Judges can start the lesson straight from the remote.
-    if (msg.type === "button" && msg.action === "enter") start("learn");
+    // Judges can start the lesson straight from the remote's Enter button.
+    if (msg.type === "commit" || (msg.type === "button" && msg.action === "enter")) start("learn");
     return;
   }
   if (msg.type === "dot") toggleDot(msg.dot);
+  if (msg.type === "cell") setCellFromRemote(msg.mask, msg.quiet);
+  if (msg.type === "commit") remoteCommit(msg);
   if (msg.type === "button" && BUTTONS[msg.action]) BUTTONS[msg.action]();
 }
 

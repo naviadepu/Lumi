@@ -23,15 +23,17 @@
       <div class="start-buttons">
         <button type="submit" id="learn-button" data-mode="learn" aria-label="Learn: type each letter in braille">Learn</button>
         <button type="submit" id="read-button" data-mode="read" aria-label="Read: show each character in braille">Read</button>
+        <button type="submit" id="type-button" data-mode="type" aria-label="Type: write freely with the remote">Type</button>
       </div>
       <p class="hint">Ctrl + Enter or the remote's Enter button starts Learn</p>
     </form>
   </main>
 
-  <!-- Screen 2: one character at a time (Learn and Read modes) -->
+  <!-- Screen 2: one character at a time (Learn, Read and Type modes).
+       Elements with data-show only appear in the listed modes. -->
   <main id="reader-screen" hidden>
     <div class="stage">
-      <button type="button" id="prev-button" class="side-button" aria-label="Previous (Left arrow)">
+      <button type="button" id="prev-button" class="side-button" data-show="learn read" aria-label="Previous (Left arrow)">
         <span aria-hidden="true">&#9664;</span>
       </button>
 
@@ -39,17 +41,17 @@
         <div id="char" class="char" role="img" aria-label=""></div>
 
         <div class="grids">
-          <figure class="grid-block">
+          <figure class="grid-block" data-show="learn read">
             <div id="cell" class="cell" role="img" aria-label="">
               <!-- Grid order is row by row: 1 4 / 2 5 / 3 6 -->
               <span class="dot" data-dot="1"></span><span class="dot" data-dot="4"></span>
               <span class="dot" data-dot="2"></span><span class="dot" data-dot="5"></span>
               <span class="dot" data-dot="3"></span><span class="dot" data-dot="6"></span>
             </div>
-            <figcaption class="learn-only">Target</figcaption>
+            <figcaption data-show="learn">Target</figcaption>
           </figure>
 
-          <figure class="grid-block learn-only">
+          <figure class="grid-block" data-show="learn type">
             <div id="input-cell" class="cell" role="group" aria-label="Your input">
               <button type="button" class="dot dot-button" data-dot="1" aria-pressed="false" aria-label="Top left (key 1 or F)"></button>
               <button type="button" class="dot dot-button" data-dot="4" aria-pressed="false" aria-label="Top right (key 4 or J)"></button>
@@ -60,19 +62,27 @@
             </div>
             <figcaption>You</figcaption>
           </figure>
+          <div class="badges" data-show="type">
+            <span id="capital-badge" class="badge">Capital</span>
+            <span id="number-badge" class="badge">Number</span>
+          </div>
         </div>
 
-        <p id="position" class="position"></p>
-        <p id="feedback" class="feedback learn-only"></p>
+        <p id="position" class="position" data-show="learn read"></p>
+        <p id="feedback" class="feedback" data-show="learn type"></p>
+        <p id="typed-text" class="typed-text" data-show="type" aria-label="Typed text"></p>
       </div>
 
-      <button type="button" id="next-button" class="side-button" aria-label="Next (Right arrow)">
+      <button type="button" id="next-button" class="side-button" data-show="learn read" aria-label="Next (Right arrow)">
         <span aria-hidden="true">&#9654;</span>
       </button>
     </div>
 
     <div class="controls">
-      <button type="button" id="check-button" class="learn-only" aria-label="Check my answer (Enter)">Check (Enter)</button>
+      <button type="button" id="check-button" data-show="learn" aria-label="Check my answer (Enter)">Check (Enter)</button>
+      <button type="button" id="enter-button" data-show="type" aria-label="Type this cell (Enter)">Enter</button>
+      <button type="button" id="backspace-button" data-show="type" aria-label="Delete last character (Backspace)">Backspace</button>
+      <button type="button" id="clear-button" data-show="type" aria-label="Clear all typed text">Clear</button>
       <button type="button" id="repeat-button" aria-label="Repeat (R)">Repeat (R)</button>
       <button type="button" id="back-button" aria-label="Back to text input (Escape)">New text (Esc)</button>
     </div>

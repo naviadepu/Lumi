@@ -17,7 +17,7 @@ from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from app.arduino import ArduinoLink, parse_line
+from app.arduino import ArduinoLink, RemoteParser
 from app.braille import text_to_steps
 from app.tts import ElevenLabsTTS, TTSUnavailable
 
@@ -59,14 +59,15 @@ def broadcast_from_thread(message):
         asyncio.run_coroutine_threadsafe(broadcast(message), main_loop)
 
 
+remote_parser = RemoteParser()
+
+
 def handle_line(line, source):
-    """A line from the Arduino or the console. DOT/BTN lines act like keyboard keys."""
-    message = parse_line(line)
-    if message:
-        log.info("%s: %s", source, line.strip().upper())
+    """A line from the remote or the console, forwarded to the page."""
+    messages = remote_parser.parse(line)
+    log.info("%s: %s%s", source, line.strip(), "" if messages else " (ignored)")
+    for message in messages:
         broadcast_from_thread(message)
-    else:
-        log.info("%s says (ignored): %s", source, line)
 
 
 arduino = ArduinoLink(
@@ -78,7 +79,7 @@ arduino = ArduinoLink(
 
 
 def console_input_loop():
-    """Test mode: type DOT 1..6, BTN ENTER, BTN NEXT, BTN PREV or BTN REPEAT in this terminal."""
+    """Test mode: type remote lines (CELL 1, CHAR 1 a, ...) or DOT 1 / BTN ENTER in this terminal."""
     for line in sys.stdin:
         line = line.strip()
         if line:
@@ -92,7 +93,7 @@ async def lifespan(app):
     arduino.start()
     if sys.stdin and sys.stdin.isatty():
         threading.Thread(target=console_input_loop, daemon=True, name="console").start()
-        log.info("Test mode: type DOT 1..6, BTN ENTER, BTN NEXT, BTN PREV or BTN REPEAT here")
+        log.info("Test mode: type remote lines here, e.g. CELL 1 then CHAR 1 a (or DOT 1, BTN ENTER)")
     if not tts.enabled:
         log.info("No ElevenLabs key/voice in .env: the page will use browser speech")
     yield

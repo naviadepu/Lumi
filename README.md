@@ -17,6 +17,9 @@ BOTTOM LEFT  (3)   BOTTOM RIGHT (6)
 Speech uses ElevenLabs, with the browser's built-in voice as a fallback. Everything
 works without the remote: the keyboard and on-screen buttons do the same things.
 
+The remote is an Arduino Uno running `braille_remote/braille_remote.ino`. Pressing a dot
+toggles it; Enter commits the cell. See "The remote" below.
+
 ## Setup (once)
 
 Needs Python 3.10+.
@@ -48,18 +51,33 @@ Type the letters to practise (default `abc`), then pick a mode.
 | Remote | Keyboard | Action |
 | --- | --- | --- |
 | Dot buttons | `1`-`6`, or `F D S` / `J K L` | Toggle a dot (press again to remove it) |
-| ENTER | Enter or Space | Check the answer |
-| REPEAT | R | Hear the prompt again |
-| NEXT / PREV | Right / Left arrow | Skip to the next / previous letter |
+| Enter | Enter or Space | Check the answer |
+| | R | Hear the prompt again |
+| | Right / Left arrow | Skip to the next / previous letter |
 | | Escape | Back to the text input |
 
-On the start screen, the remote's ENTER starts Learn mode.
+On the start screen, the remote's Enter starts Learn mode. Digits are two steps: the
+number sign (dots 3-4-5-6), then the digit.
+
+**Type**: write freely with the remote (no text needed). Shows the live cell, a preview of
+what Enter will type, Capital and Number badges, and the typed text. Each character is spoken.
+
+| Remote | Keyboard | Action |
+| --- | --- | --- |
+| Dot buttons | `1`-`6`, or `F D S` / `J K L` | Toggle a dot |
+| Enter | Enter or Space | Type the cell (empty cell = space) |
+| | Backspace | Delete the last character |
+| | R | Read back what you typed |
+| | Escape | Back to the text input |
+
+Dot 6 alone = capital sign (next letter is a capital). Dots 3-4-5-6 = number sign
+(a-j type 1-0 until a space).
 
 **Read**: show and speak each character, one at a time.
 
 | Key | Action |
 | --- | --- |
-| Right arrow, Space, or remote ENTER / NEXT | Next character |
+| Right arrow, Space, or the remote's Enter | Next character |
 | Left arrow | Previous character |
 | R | Repeat current character |
 | Escape | Back to the text input |
@@ -73,18 +91,18 @@ Braille details:
 
 ## Test without the remote
 
-While the server is running, type into **the same terminal** and press Enter:
+While the server is running, type the remote's messages into **the same terminal**.
+For example, the letter "a" (dot 1, then Enter):
 
 ```
-DOT 1
-DOT 4
-BTN ENTER
-BTN NEXT
-BTN PREV
-BTN REPEAT
+CELL 1
+CHAR 1 a
+CELL 0
+MODE 0 0
 ```
 
-The page reacts exactly as if a physical button was pressed.
+The page reacts exactly as if the remote sent them. Shortcuts that also work here:
+`DOT 1` ... `DOT 6` (toggle a dot), `BTN ENTER`, `BTN NEXT`, `BTN PREV`, `BTN REPEAT`.
 
 Unit tests:
 
@@ -97,37 +115,51 @@ pytest
 - **Click anywhere on the page once** before handing over the remote. Browsers block audio
   until someone has interacted with the page. (Or start Chrome with
   `--autoplay-policy=no-user-gesture-required`.)
-- Check the corner says "Arduino: connected".
+- Check the corner says "Arduino: connected" (and that the IDE / test page is closed).
 - Run it once beforehand with the ElevenLabs key set. Every phrase is cached in `audio_cache/`,
   so the demo plays instantly and still works if the Wi-Fi drops.
 
-## Building the remote
+## The remote
 
-1. Wire each button between a pin and GND (no resistors needed). Default pins are at the top of
-   `arduino/braille_board/braille_board.ino`:
-   TOP LEFT 2, MIDDLE LEFT 3, BOTTOM LEFT 4, TOP RIGHT 5, MIDDLE RIGHT 6, BOTTOM RIGHT 7, ENTER 8.
-   Optional: NEXT 9, PREV 10, REPEAT 11 (set to `-1` if you skip them), and 6 LEDs on A0-A5 that
-   show the target pattern (set `USE_LEDS = false` if you skip them).
-2. Open the sketch in the Arduino IDE, pick your board and port, and click Upload.
-3. **Close the Arduino IDE Serial Monitor.** Only one program can use the port at a time.
-4. Start (or keep running) `python -m app.main`. It finds the board within a few seconds and the
-   corner of the page changes to "Arduino: connected". If it picks the wrong port, set
-   `ARDUINO_PORT` in `.env` (Mac: `ls /dev/cu.*`, e.g. `/dev/cu.usbmodem1101`; Windows: `COM3`).
+Hardware (under $30): Arduino Uno, half-size breadboard, 7 tactile buttons, jumper wires.
+No resistors: the pins use the Uno's internal pull-ups.
 
-Serial protocol (9600 baud, one line each, `\n` ending):
+```
+Dot 1 (top left)    -> D2      Dot 4 (top right)    -> D5
+Dot 2 (middle left) -> D3      Dot 5 (middle right) -> D6
+Dot 3 (bottom left) -> D4      Dot 6 (bottom right) -> D7
+Enter               -> D8      other leg of every button -> GND
+```
 
-| Direction | Line | Meaning |
-| --- | --- | --- |
-| remote -> laptop | `DOT 1` ... `DOT 6` | dot button pressed (laptop toggles it) |
-| remote -> laptop | `BTN ENTER` / `BTN NEXT` / `BTN PREV` / `BTN REPEAT` | button pressed |
-| laptop -> remote | `SHOW A 100000` | current character, dots 1-6 (1 = raised), for the optional LEDs |
+1. Open `braille_remote/braille_remote.ino` in the Arduino IDE (it must stay in the
+   `braille_remote` folder), pick Arduino Uno and its port, and Upload.
+2. **Close the Serial Monitor and quit the IDE.** Only one program can use the port at a time.
+   The same goes for `braille_interface.html` (the standalone Web Serial test page):
+   disconnect it before starting this app.
+3. Start `python -m app.main`. It finds the board within a few seconds and the corner of the
+   page says "Arduino: connected". If it picks the wrong port, set `ARDUINO_PORT` in `.env`
+   (Windows: `COM3`; Mac: `ls /dev/cu.*`, e.g. `/dev/cu.usbmodem1101`).
+
+Serial protocol (9600 baud, one line each). Both the short names and the long names work:
+
+| Line | Meaning |
+| --- | --- |
+| `READY` | sketch booted |
+| `CELL <mask>` / `BRAILLE_CELL_BITMASK <mask>` | current dots changed (bit 0 = dot 1 ... bit 5 = dot 6) |
+| `MODE <cap> <num>` / `INPUT_MODE_FLAGS <cap> <num>` | capital / number mode, 0 or 1 |
+| `CHAR <mask> <c>` / `COMMITTED_CHARACTER <mask> <c>` | Enter typed character c (may be a space) |
+| `UNKNOWN <mask>` / `NO_MATCHING_CHARACTER_FOR_BITMASK <mask>` | Enter on a pattern with no meaning |
+
+Enter on the capital or number sign prints no character, only `CELL 0` and `MODE`; the
+server reports that to the page as a commit of the sign. The app also sends
+`SHOW A 100000` lines (the current character) which the remote ignores.
 
 ## How it fits together
 
 ```
 browser (app/static)  --HTTP-->  FastAPI (app/main.py)  --HTTPS-->  ElevenLabs
         ^                              |
-        +------- WebSocket ------------+  <--serial-->  Arduino remote
+        +------- WebSocket ------------+  <--serial-->  braille remote (Arduino)
           (button presses, status)
 ```
 
@@ -135,10 +167,11 @@ browser (app/static)  --HTTP-->  FastAPI (app/main.py)  --HTTPS-->  ElevenLabs
 | --- | --- |
 | `app/braille.py` | Braille table and text -> list of cells (number sign, spaces) |
 | `app/tts.py` | ElevenLabs Python SDK call + audio cache (memory and `audio_cache/` on disk) |
-| `app/arduino.py` | Serial connection, auto-detect, reconnect, mock mode, line parsing |
+| `app/arduino.py` | Serial connection, auto-detect, reconnect, mock mode, remote protocol parser |
 | `app/main.py` | Web server: `/api/steps`, `/api/show`, `/speak`, `/ws`, console test mode |
-| `app/static/` | The page: `index.html`, `style.css`, `app.js` (Learn + Read logic) |
-| `arduino/braille_board/` | Arduino sketch for the remote |
+| `app/static/` | The page: `index.html`, `style.css`, `app.js` (Learn, Read, Type) |
+| `braille_remote/` | Arduino sketch for the remote |
+| `braille_interface.html` | Standalone Web Serial test page for the remote (no server needed) |
 | `tests/` | Braille lookup and serial protocol tests |
 
 Settings in `.env`: `SPEAK_LETTER_PREFIX` / `SPEAK_NUMBER_PREFIX` change what Read mode speaks
