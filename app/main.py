@@ -4,6 +4,8 @@ Run with:  python -m app.main
 """
 
 import asyncio
+import base64
+import binascii
 import logging
 import os
 import sys
@@ -18,8 +20,10 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from app.arduino import ArduinoLink, RemoteParser
+from app import coach
 from app.braille import text_to_steps
 from app.tts import ElevenLabsTTS, TTSUnavailable
+from app.vision import GeminiVision, VisionUnavailable
 
 load_dotenv()
 
@@ -36,6 +40,11 @@ tts = ElevenLabsTTS(
     api_key=os.getenv("ELEVENLABS_API_KEY", "").strip(),
     voice_id=os.getenv("ELEVENLABS_VOICE_ID", "").strip(),
     model_id=os.getenv("ELEVENLABS_MODEL_ID", "eleven_multilingual_v2").strip(),
+)
+
+vision = GeminiVision(
+    api_key=os.getenv("GEMINI_API_KEY", "").strip(),
+    model=os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite").strip(),
 )
 
 
@@ -94,6 +103,8 @@ async def lifespan(app):
     if sys.stdin and sys.stdin.isatty():
         threading.Thread(target=console_input_loop, daemon=True, name="console").start()
         log.info("Test mode: type remote lines here, e.g. CELL 1 then CHAR 1 a (or DOT 1, BTN ENTER)")
+    if not vision.enabled:
+        log.info("No GEMINI_API_KEY in .env: Snap mode is off")
     if not tts.enabled:
         log.info("No ElevenLabs key/voice in .env: the page will use browser speech")
     yield
@@ -115,8 +126,23 @@ class StepsRequest(BaseModel):
 
 @app.post("/api/steps")
 def steps(req: StepsRequest):
-    """Text -> list of braille cells to show one at a time."""
-    return {"steps": text_to_steps(req.text, LETTER_PREFIX, NUMBER_PREFIX)}
+    """Text -> list of braille cells to show one at a time, each with a memory hint."""
+    steps = text_to_steps(req.text, LETTER_PREFIX, NUMBER_PREFIX)
+    for step in steps:
+        step["hint"] = coach.hint(step["char"], step["is_number_sign"])
+    return {"steps": steps}
+
+
+class CheckRequest(BaseModel):
+    target: str = Field(min_length=1, max_length=40)  # "D", "4" or "the number sign"
+    expected: str = Field(pattern=r"^[01]{6}$")
+    got: str = Field(pattern=r"^[01]{6}$")
+
+
+@app.post("/api/check")
+def check(req: CheckRequest):
+    """Learn mode: is the answer right, and if not, why not?"""
+    return coach.check(req.target, req.expected, req.got)
 
 
 class ShowRequest(BaseModel):
@@ -133,7 +159,29 @@ def show(req: ShowRequest):
 
 @app.get("/api/status")
 def status():
-    return {"arduino": arduino.connected, "elevenlabs": tts.enabled}
+    return {"arduino": arduino.connected, "elevenlabs": tts.enabled, "vision": vision.enabled}
+
+
+class SnapRequest(BaseModel):
+    image: str = Field(max_length=8_000_000)  # data URL from the webcam: "data:image/jpeg;base64,..."
+
+
+@app.post("/api/snap")
+async def snap(req: SnapRequest):
+    """Webcam photo -> {"description": "I see ...", "word": "tylenol"} via Gemini."""
+    header, _, data = req.image.partition(",")
+    mime_type = header.removeprefix("data:").removesuffix(";base64")
+    if mime_type not in ("image/jpeg", "image/png", "image/webp"):
+        raise HTTPException(status_code=400, detail="Expected a JPEG, PNG or WebP data URL")
+    try:
+        image_bytes = base64.b64decode(data, validate=True)
+    except binascii.Error:
+        raise HTTPException(status_code=400, detail="Image is not valid base64")
+    try:
+        return await vision.snap(image_bytes, mime_type)
+    except VisionUnavailable as e:
+        log.warning("Vision unavailable: %s", e)
+        raise HTTPException(status_code=503, detail=str(e))
 
 
 @app.get("/speak")

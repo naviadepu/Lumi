@@ -4,6 +4,8 @@
 //   Learn: "Type the letter A." The user presses dots (remote or keyboard) and Enter.
 //          Wrong -> we say which buttons to press. Right -> next letter.
 //   Read:  show and speak each character of the text, one at a time.
+//   Snap:  hold something up to the webcam; Gemini reads it and Learn mode
+//          teaches that word ("I see a bottle of Tylenol. Let's write Tylenol.").
 //   Type:  free typing with the remote, like braille_interface.html: live cell,
 //          preview of what Enter will type, capital/number badges, typed text.
 
@@ -20,14 +22,21 @@ const positionEl = $("position");
 const feedbackEl = $("feedback");
 const typedTextEl = $("typed-text");
 const statusEl = $("arduino-status");
+const cameraScreen = $("camera-screen");
+const video = $("camera");
+const cameraStatus = $("camera-status");
 const targetDots = [...cellEl.querySelectorAll(".dot")];
 const inputDots = [...document.querySelectorAll(".dot-button")];
 
 let mode = "learn";    // "learn", "read" or "type"
-let steps = [];        // [{char, spoken, pattern, is_number_sign, space_before}]
+let steps = [];        // [{char, spoken, pattern, is_number_sign, space_before, hint}]
+let lessonSteps = [];  // Learn: the original lesson; steps may also hold review copies
+let mistakes = {};     // Learn: wrong answers per character this lesson
 let index = 0;
 let entered = [false, false, false, false, false, false]; // dots 1-6 the user pressed
 let elevenLabsEnabled = true;
+let visionEnabled = false;
+let lessonWord = "";   // Snap: the word from the photo, e.g. "Tylenol"
 
 // Type mode state (the remote keeps its own copy and reports it in "mode" messages).
 let typedText = "";
@@ -161,11 +170,16 @@ function clearInput() {
   renderInput();
 }
 
+// While pressing dots, keep the hint for the current letter visible.
+function resetFeedback() {
+  feedbackEl.textContent = mode === "learn" ? hintText(steps[index]) : "";
+}
+
 // Keyboard, on-screen click, or "DOT n" test line: the page holds the cell.
 function toggleDot(n) {
   if (mode === "read") return;
   entered[n - 1] = !entered[n - 1];
-  feedbackEl.textContent = "";
+  resetFeedback();
   renderInput();
   say([entered[n - 1] ? dotName(n) : `${dotName(n)} off`]);
 }
@@ -180,12 +194,16 @@ function setCellFromRemote(mask, quiet) {
   // One dot added or removed by the user: say which. (Clearing after Enter is "quiet".)
   if (!quiet && changed.length === 1) {
     const n = changed[0] + 1;
-    feedbackEl.textContent = "";
+    resetFeedback();
     say([entered[n - 1] ? dotName(n) : `${dotName(n)} off`]);
   }
 }
 
 // ---------------------------------------------------------------- learn mode
+//
+// The coach (app/coach.py) explains *why* an answer is wrong: mirror image,
+// one row off, a missing or extra dot. Letters you miss come back for review,
+// and the lesson ends with a short summary.
 
 // "the letter A", "the number 5", "the number sign"
 function nameOf(step) {
@@ -194,39 +212,109 @@ function nameOf(step) {
   return `the letter ${step.char.toUpperCase()}`;
 }
 
-const promptFor = (step) => `Type ${nameOf(step)}.`;
+// How the coach refers to the target: "D", "4" or "the number sign"
+const targetOf = (step) => (step.is_number_sign ? "the number sign" : step.char.toUpperCase());
+
+// "Next is: the letter K. Hint: K is A plus bottom left."  /  "Let's try D again."
+function introFor(step) {
+  if (step.review) return `Let's try ${nameOf(step)} again.`;
+  return `Next is: ${nameOf(step)}.` + (step.hint ? ` Hint: ${step.hint}` : "");
+}
+
+const promptFor = (step) =>
+  step.review ? introFor(step) : `Type ${nameOf(step)}.` + (step.hint ? ` Hint: ${step.hint}` : "");
+
+const hintText = (step) => (step.hint && !step.review ? "Hint: " + step.hint : "");
 
 // Spoken: "Top, left. Bottom, left. Middle, right." Left column first, top to bottom.
 function buttonsToPress(pattern) {
   return raisedDots(pattern).map((n) => `${capitalize(ROW[n])}, ${COLUMN[n]}.`).join(" ");
 }
 
-function checkAnswer(answer = enteredPattern()) {
+async function coachCheck(step, answer) {
+  try {
+    const r = await fetch("/api/check", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target: targetOf(step), expected: step.pattern, got: answer }),
+    });
+    if (r.ok) return await r.json();
+  } catch {}
+  // Server unreachable: plain right/wrong.
+  const correct = answer === step.pattern;
+  return {
+    correct,
+    spoken: correct ? "Good job!" : `Incorrect. ${buttonsToPress(step.pattern)}`,
+    text: correct ? "Good job!" : "Incorrect. Press: " + raisedDots(step.pattern).map(dotName).join(", "),
+  };
+}
+
+function lessonSummary() {
+  const total = lessonSteps.filter((s) => !s.is_number_sign).length;
+  const missed = Object.values(mistakes).reduce((a, b) => a + b, 0);
+  const things = total === 1 ? "1 character" : `${total} characters`;
+  if (!missed) return { spoken: `Lesson complete! ${things}, no mistakes. Perfect.`, text: `Lesson complete! ${things}, no mistakes.` };
+  const [trickiest] = Object.entries(mistakes).sort((a, b) => b[1] - a[1])[0];
+  const name = nameOf({ char: trickiest, is_number_sign: trickiest === "#" });
+  return {
+    spoken: `Lesson complete! ${things}, ${missed} ${missed === 1 ? "mistake" : "mistakes"}. Trickiest: ${name}.`,
+    text: `Lesson complete! ${things} · ${missed} ${missed === 1 ? "mistake" : "mistakes"} · trickiest: ${name.replace(/^the /, "")}`,
+  };
+}
+
+async function checkAnswer(answer = enteredPattern()) {
   const step = steps[index];
   clearInput();
+  const result = await coachCheck(step, answer);
 
-  if (answer !== step.pattern) {
-    feedbackEl.textContent = "Incorrect. Press: " + raisedDots(step.pattern).map(dotName).join(", ");
-    say([`Incorrect. ${buttonsToPress(step.pattern)}`]);
+  if (!result.correct) {
+    const key = step.is_number_sign ? "#" : step.char.toLowerCase();
+    mistakes[key] = (mistakes[key] || 0) + 1;
+    step.missed = true;
+    feedbackEl.textContent = result.text;
+    say([result.spoken]);
     return;
   }
 
-  const finished = index === steps.length - 1;
-  index = finished ? 0 : index + 1;
-  render();
-  feedbackEl.textContent = "Good job!";
-  const intro = finished ? "Good job! You did every letter. Starting over." : "Good job!";
-  say([`${intro} Next is: ${nameOf(steps[index])}`]);
+  // Missed letters come back for review a couple of letters later.
+  if (step.missed && !step.review && /^[a-z]$/i.test(step.char)) {
+    steps.splice(Math.min(index + 3, steps.length), 0, { ...step, review: true, missed: false });
+  }
+
+  if (index === steps.length - 1 && lessonWord) {
+    // Snap lesson done: celebrate, then straight back to the camera for the next thing.
+    const summary = lessonSummary();
+    feedbackEl.textContent = summary.text;
+    const word = lessonWord;
+    lessonWord = "";
+    openCamera({ speak: false });
+    cameraStatus.textContent = `You wrote ${word} in braille! Hold up something new, then press Enter.`;
+    say([`You just wrote ${word} in braille! ${summary.spoken}`, "Hold up something new, then press Enter."]);
+    return;
+  }
+
+  if (index === steps.length - 1) {
+    const summary = lessonSummary();
+    steps = lessonSteps.map((s) => ({ ...s, missed: false }));
+    mistakes = {};
+    index = 0;
+    render();
+    feedbackEl.textContent = summary.text;
+    say([`${summary.spoken} Starting over. ${introFor(steps[0])}`]);
+  } else {
+    index += 1;
+    render();
+    feedbackEl.textContent = ["Good job!", hintText(steps[index])].filter(Boolean).join(" ");
+    say([`Good job! ${introFor(steps[index])}`]);
+  }
   prefetchLearn();
 }
 
-// Warm the audio cache so feedback plays without a pause.
+// Warm the audio cache so the next prompts play without a pause.
 function prefetchLearn() {
-  const step = steps[index];
   const upcoming = steps[index + 1];
-  getAudioUrl(promptFor(step));
-  getAudioUrl(`Incorrect. ${buttonsToPress(step.pattern)}`);
-  if (upcoming) getAudioUrl(`Good job! Next is: ${nameOf(upcoming)}`);
+  getAudioUrl(promptFor(steps[index]));
+  if (upcoming) getAudioUrl(`Good job! ${introFor(upcoming)}`);
 }
 
 // ---------------------------------------------------------------- type mode
@@ -326,13 +414,13 @@ function clearTyped() {
 
 // ---------------------------------------------------------------- navigation
 
-function goTo(newIndex, crossedSpace) {
+function goTo(newIndex, crossedSpace, intro = "") {
   index = newIndex;
   render();
   if (mode === "learn") {
     clearInput();
-    feedbackEl.textContent = "";
-    say([promptFor(steps[index])]);
+    feedbackEl.textContent = hintText(steps[index]);
+    say(intro ? [intro, promptFor(steps[index])] : [promptFor(steps[index])]);
     prefetchLearn();
   } else {
     say(crossedSpace ? ["Space", steps[index].spoken] : [steps[index].spoken]);
@@ -380,8 +468,10 @@ function openReader(newMode) {
   $({ learn: "check-button", read: "next-button", type: "enter-button" }[mode]).focus();
 }
 
-async function start(newMode) {
+async function start(newMode, intro = "") {
   formError.textContent = "";
+  lessonWord = "";
+  if (newMode === "snap") return openCamera();
   if (newMode === "type") {
     typedText = "";
     capitalNext = numberMode = false; // the remote re-syncs these on its next Enter
@@ -411,19 +501,100 @@ async function start(newMode) {
     textInput.focus();
     return;
   }
-  steps = usable;
+  lessonSteps = usable;
+  steps = usable.map((s) => ({ ...s })); // copies: review steps get added to this list
+  mistakes = {};
   openReader(newMode);
-  goTo(0, false);
+  goTo(0, false, intro);
 }
 
 function backToInput() {
   playToken++;
   stopSpeech();
+  closeCamera();
   readerScreen.hidden = true;
   inputScreen.hidden = false;
   textInput.focus();
   textInput.select();
 }
+
+// ---------------------------------------------------------------- snap (camera + Gemini)
+
+let cameraStream = null;
+let snapping = false;
+
+const cameraOpen = () => !cameraScreen.hidden;
+
+async function openCamera({ speak = true } = {}) {
+  if (!visionEnabled) {
+    formError.textContent = "Snap needs a Gemini API key in .env (GEMINI_API_KEY).";
+    say(["Snap needs a Gemini API key."]);
+    return;
+  }
+  if (!cameraStream) {
+    try {
+      cameraStream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } });
+    } catch {
+      formError.textContent = "Couldn't open the camera. Allow camera access and try again.";
+      say(["I couldn't open the camera."]);
+      return;
+    }
+    video.srcObject = cameraStream;
+  }
+  inputScreen.hidden = true;
+  readerScreen.hidden = true;
+  cameraScreen.hidden = false;
+  $("shutter-button").focus();
+  if (speak) {
+    cameraStatus.textContent = "Hold something up to the camera, then press Enter.";
+    say(["Hold something up to the camera, then press Enter."]);
+  }
+}
+
+function closeCamera() {
+  if (cameraStream) cameraStream.getTracks().forEach((track) => track.stop());
+  cameraStream = null;
+  video.srcObject = null;
+  cameraScreen.hidden = true;
+}
+
+// Grab a frame, ask Gemini what it is, and turn the word into a lesson.
+async function takePhoto() {
+  if (snapping || !video.videoWidth) return;
+  snapping = true;
+  cameraStatus.textContent = "Looking...";
+  say(["Looking."]);
+
+  const scale = Math.min(1, 1024 / video.videoWidth);
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(video.videoWidth * scale);
+  canvas.height = Math.round(video.videoHeight * scale);
+  canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
+
+  try {
+    const r = await fetch("/api/snap", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image: canvas.toDataURL("image/jpeg", 0.85) }),
+    });
+    if (!r.ok) throw new Error();
+    const { description, word } = await r.json();
+    const Word = capitalize(word);
+    closeCamera();
+    textInput.value = Word;
+    await start("learn", `${description} Let's write ${Word} in braille.`);
+    lessonWord = Word;
+    feedbackEl.textContent = `From your photo: ${Word}`;
+  } catch {
+    cameraStatus.textContent = "I couldn't read that. Hold it closer and press Enter again.";
+    say(["I couldn't read that. Hold it closer and press Enter again."]);
+  } finally {
+    snapping = false;
+  }
+}
+
+$("shutter-button").addEventListener("click", takePhoto);
+$("camera-back-button").addEventListener("click", backToInput);
 
 // ---------------------------------------------------------------- input
 
@@ -460,7 +631,14 @@ const SHORTCUTS = {
 };
 
 document.addEventListener("keydown", (e) => {
-  if (!readerOpen() || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+  if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+  if (cameraOpen()) {
+    const onButton = e.target.closest?.("button");
+    if ((e.key === "Enter" || e.key === " ") && !onButton) { e.preventDefault(); takePhoto(); }
+    if (e.key === "Escape") { e.preventDefault(); backToInput(); }
+    return;
+  }
+  if (!readerOpen()) return;
   const onButton = e.target.closest?.("button");
   let action = SHORTCUTS[e.key];
 
@@ -517,9 +695,14 @@ function handleRemote(msg) {
     if (readerOpen() && mode === "type") renderType();
     return;
   }
+  const isEnter = msg.type === "commit" || (msg.type === "button" && msg.action === "enter");
+  if (cameraOpen()) {
+    if (isEnter) takePhoto(); // the remote's Enter is the shutter
+    return;
+  }
   if (!readerOpen()) {
-    // Judges can start the lesson straight from the remote's Enter button.
-    if (msg.type === "commit" || (msg.type === "button" && msg.action === "enter")) start("learn");
+    // Judges can start straight from the remote: Snap if the camera is set up, else Learn.
+    if (isEnter) start(visionEnabled ? "snap" : "learn");
     return;
   }
   if (msg.type === "dot") toggleDot(msg.dot);
@@ -544,7 +727,7 @@ function connectWebSocket() {
 
 fetch("/api/status")
   .then((r) => r.json())
-  .then((s) => { elevenLabsEnabled = s.elevenlabs; })
+  .then((s) => { elevenLabsEnabled = s.elevenlabs; visionEnabled = s.vision; })
   .catch(() => {});
 
 connectWebSocket();

@@ -14,6 +14,11 @@ BOTTOM LEFT  (3)   BOTTOM RIGHT (6)
             [ ENTER ]
 ```
 
+**Snap it, learn it:** hold anything up to the webcam (a medicine bottle, a name badge,
+a spice jar) and press Enter on the remote. Gemini reads it, the device says "I see a
+bottle of Tylenol. Let's write Tylenol in braille", and coaches you through the word.
+Labeling your own things is one of the first everyday uses of braille after vision loss.
+
 Speech uses ElevenLabs, with the browser's built-in voice as a fallback. Everything
 works without the remote: the keyboard and on-screen buttons do the same things.
 
@@ -33,6 +38,9 @@ cp .env.example .env               # then paste your ElevenLabs key into .env
 
 No ElevenLabs key? Leave it empty. The page uses the browser's built-in voice.
 
+For Snap, get a free Gemini key at https://aistudio.google.com/apikey and set
+`GEMINI_API_KEY` in `.env`. Without it, Snap is off and everything else works.
+
 ## Run
 
 ```bash
@@ -44,7 +52,16 @@ Open http://127.0.0.1:8000
 
 ## Modes
 
-Type the letters to practise (default `abc`), then pick a mode.
+**Snap**: learn a word from the real world. Press the remote's Enter on the start screen
+(or the Snap button) to open the camera, hold something up, press Enter again. The lesson
+is the word Gemini read; when you finish, the camera opens for the next thing.
+
+| Remote | Keyboard | Action |
+| --- | --- | --- |
+| Enter | Enter or Space | Take the photo |
+| | Escape | Back to the start screen |
+
+For the other modes, type the letters to practise (default `abc`), then pick a mode.
 
 **Learn**: type each letter in braille.
 
@@ -56,8 +73,27 @@ Type the letters to practise (default `abc`), then pick a mode.
 | | Right / Left arrow | Skip to the next / previous letter |
 | | Escape | Back to the text input |
 
-On the start screen, the remote's Enter starts Learn mode. Digits are two steps: the
+On the start screen, the remote's Enter starts Snap (or Learn if there's no Gemini key). Digits are two steps: the
 number sign (dots 3-4-5-6), then the digit.
+
+**The coach.** Learn mode doesn't just say "wrong", it explains the mistake (`app/coach.py`):
+
+| You did | It says |
+| --- | --- |
+| Typed the mirror image (F for D, I for E, J for H) | "Close! You typed F, the mirror image. Swap left and right." |
+| Right shape, wrong row | "Close! Right shape, but one row too low." |
+| Left out a dot | "Almost! Also press: Bottom, left." |
+| Added a dot | "Almost! Leave out: Middle, right." |
+| Anything else | "Incorrect. You typed E. C is: Top, left. Top, right." |
+
+New letters come with a hint from braille's structure ("K is A plus bottom left",
+"U is A plus both bottom dots", "4 uses the same dots as D"). Letters you miss come back
+for review a few letters later, and the lesson ends with a summary
+("Lesson complete! 3 characters, 2 mistakes. Trickiest: the letter D.").
+
+Why: adult braille learners say existing tools "only flag errors without clarifying
+rules" ([arXiv 2512.03398](https://arxiv.org/abs/2512.03398)), and adults learning braille
+make mirror-image errors, as children do with b and d.
 
 **Type**: write freely with the remote (no text needed). Shows the live cell, a preview of
 what Enter will type, Capital and Number badges, and the typed text. Each character is spoken.
@@ -116,6 +152,8 @@ pytest
   until someone has interacted with the page. (Or start Chrome with
   `--autoplay-policy=no-user-gesture-required`.)
 - Check the corner says "Arduino: connected" (and that the IDE / test page is closed).
+- Allow camera access once in Chrome, and have props ready: a medicine bottle, a spice jar,
+  a name badge. Short words make the best demos.
 - Run it once beforehand with the ElevenLabs key set. Every phrase is cached in `audio_cache/`,
   so the demo plays instantly and still works if the Wi-Fi drops.
 
@@ -157,7 +195,8 @@ server reports that to the page as a commit of the sign. The app also sends
 ## How it fits together
 
 ```
-browser (app/static)  --HTTP-->  FastAPI (app/main.py)  --HTTPS-->  ElevenLabs
+browser (app/static)  --HTTP-->  FastAPI (app/main.py)  --HTTPS-->  ElevenLabs (voice)
+  + webcam                                               --HTTPS-->  Gemini (reads photos)
         ^                              |
         +------- WebSocket ------------+  <--serial-->  braille remote (Arduino)
           (button presses, status)
@@ -166,13 +205,15 @@ browser (app/static)  --HTTP-->  FastAPI (app/main.py)  --HTTPS-->  ElevenLabs
 | File | What it does |
 | --- | --- |
 | `app/braille.py` | Braille table and text -> list of cells (number sign, spaces) |
+| `app/vision.py` | Snap: Gemini reads a webcam photo and picks a word to learn |
+| `app/coach.py` | Mistake diagnosis (mirror, shifted, missing/extra dots) and memory hints |
 | `app/tts.py` | ElevenLabs Python SDK call + audio cache (memory and `audio_cache/` on disk) |
 | `app/arduino.py` | Serial connection, auto-detect, reconnect, mock mode, remote protocol parser |
 | `app/main.py` | Web server: `/api/steps`, `/api/show`, `/speak`, `/ws`, console test mode |
 | `app/static/` | The page: `index.html`, `style.css`, `app.js` (Learn, Read, Type) |
 | `braille_remote/` | Arduino sketch for the remote |
 | `braille_interface.html` | Standalone Web Serial test page for the remote (no server needed) |
-| `tests/` | Braille lookup and serial protocol tests |
+| `tests/` | Braille lookup, coach, vision, and serial protocol tests |
 
 Settings in `.env`: `SPEAK_LETTER_PREFIX` / `SPEAK_NUMBER_PREFIX` change what Read mode speaks
 ("Letter A", "Number 5"); `ELEVENLABS_MODEL_ID` defaults to `eleven_multilingual_v2`

@@ -21,12 +21,24 @@
       <textarea id="text-input" rows="3" autocomplete="off" spellcheck="false">abc</textarea>
       <p id="form-error" class="form-error" role="alert"></p>
       <div class="start-buttons">
+        <button type="submit" id="snap-button" data-mode="snap" aria-label="Snap: learn a word from something you hold up to the camera">Snap</button>
         <button type="submit" id="learn-button" data-mode="learn" aria-label="Learn: type each letter in braille">Learn</button>
         <button type="submit" id="read-button" data-mode="read" aria-label="Read: show each character in braille">Read</button>
         <button type="submit" id="type-button" data-mode="type" aria-label="Type: write freely with the remote">Type</button>
       </div>
-      <p class="hint">Ctrl + Enter or the remote's Enter button starts Learn</p>
+      <p class="hint">Snap: hold something up to the camera and learn its name in braille.
+        Ctrl + Enter or the remote's Enter button starts Learn.</p>
     </form>
+  </main>
+
+  <!-- Snap: webcam -> Gemini picks a word -> Learn mode teaches it -->
+  <main id="camera-screen" hidden>
+    <video id="camera" class="camera" autoplay playsinline muted aria-label="Camera view"></video>
+    <p id="camera-status" class="camera-status" role="status"></p>
+    <div class="controls">
+      <button type="button" id="shutter-button" aria-label="Take photo (Enter)">Take photo (Enter)</button>
+      <button type="button" id="camera-back-button" aria-label="Back (Escape)">Back (Esc)</button>
+    </div>
   </main>
 
   <!-- Screen 2: one character at a time (Learn, Read and Type modes).
