@@ -24,3 +24,17 @@ def test_digits_use_their_letter_slot():
 def test_prompt_lists_wheel_letters():
     from app.vision import build_prompt
     assert "a, b, c, e, i, l, n, p" in build_prompt("abceilnp")
+
+
+def test_hints_only_use_letters_on_the_wheel():
+    from app.coach import hint
+    wheel = "abceilnp"
+    assert hint("l", wheel_letters=wheel) == "L is B plus bottom left."  # B is on the wheel
+    assert hint("p", wheel_letters=wheel) is None                       # F isn't
+    assert hint("p") == "P is F plus bottom left."                      # no wheel: always
+
+
+def test_word_list_is_spellable():
+    from app.wheel import EVERYDAY_WORDS, spellable, words_for
+    assert all(spellable(w, "abceilnp") for w in EVERYDAY_WORDS)
+    assert "pen" in words_for("abceilnp") and "pen" not in words_for("abc")

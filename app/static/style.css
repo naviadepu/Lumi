@@ -1,144 +1,332 @@
-/* Black and white only. No colors, gradients or shadows. */
+/* Lumi: a soft green aurora with liquid-glass controls.
+   Quiet and refined: regular weights, thin light edges, square camera, one glowing letter.
+   Text stays large and white over the darker greens. The "High contrast" switch (on
+   automatically when the system asks for more contrast) turns it plain black and white. */
 :root {
-  --bg: #000000;
-  --fg: #FFFFFF;
-  --dot-size: min(6vh, 11vw);
-  font-family: "Atkinson Hyperlegible", "Helvetica Neue", Arial, sans-serif;
+  --forest: #123A26;
+  --pine: #1F5634;
+  --sage: #7FA36A;
+  --lime: #CFE48A;
+  --mist: #EEF4EC;
+  --sky: #B7D3DC;
+  --text: #FFFFFF;
+  --text-soft: rgba(255, 255, 255, 0.82);
+
+  /* Liquid glass: frosted, a thin bright rim, a soft shadow below, light pooling on the bottom edge */
+  --glass-fill: linear-gradient(180deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.08) 100%);
+  --glass-tint: rgba(14, 44, 28, 0.22);
+  --glass-rim: rgba(255, 255, 255, 0.55);
+  --glass-light: inset 0 1px 0 rgba(255, 255, 255, 0.7), inset 0 -10px 18px -12px rgba(255, 255, 255, 0.7);
+  --glass-drop: 0 18px 30px -14px rgba(8, 30, 18, 0.55);
+  --blur: blur(24px) saturate(150%);
+  --radius: 14px;
+
+  --dot-size: min(5vh, 9vw);
+  font-family: -apple-system, "SF Pro Display", "SF Pro Text", Inter, "Helvetica Neue", Arial, sans-serif;
+  font-weight: 400;
+  -webkit-font-smoothing: antialiased;
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
 
 html, body {
   margin: 0;
-  height: 100%;
-  background: var(--bg);
-  color: var(--fg);
+  min-height: 100%;
+  color: var(--text);
 }
 
 body {
-  font-size: 1.5rem;
-  line-height: 1.4;
+  font-size: 1.4rem;
+  line-height: 1.45;
+  letter-spacing: -0.005em;
+  background-color: var(--forest);
+}
+
+/* The background: the green swirl, flowing. Two copies (one mirrored) slowly turn and drift
+   at different speeds; where they overlap the bands of light move through each other like
+   liquid. A dark green wash on top keeps white text readable, deepest at the bottom. */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+}
+
+.flow {
+  position: absolute;
+  inset: -30%;
+  background: url("/static/background.jpg") center / cover;
+  will-change: transform;
+}
+
+.flow-a { animation: flow-a 18s ease-in-out infinite alternate; }
+
+.flow-b {
+  opacity: 0.6;
+  mix-blend-mode: soft-light;
+  animation: flow-b 23s ease-in-out infinite alternate;
+}
+
+.backdrop::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(10, 40, 24, 0.30) 0%, rgba(10, 40, 24, 0.42) 45%, rgba(8, 32, 19, 0.70) 100%);
+}
+
+@keyframes flow-a {
+  0%   { transform: rotate(-14deg) scale(1.05) translate(-8%, -4%); }
+  50%  { transform: rotate(4deg) scale(1.25) translate(3%, 5%); }
+  100% { transform: rotate(16deg) scale(1.1) translate(8%, -3%); }
+}
+
+@keyframes flow-b {
+  0%   { transform: scaleX(-1) rotate(18deg) scale(1.2) translate(8%, 5%); }
+  50%  { transform: scaleX(-1) rotate(-2deg) scale(1.05) translate(-2%, -6%); }
+  100% { transform: scaleX(-1) rotate(-16deg) scale(1.25) translate(-8%, 4%); }
+}
+
+/* Fine film grain */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.12;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 [hidden] { display: none !important; }
 
-/* Big, obvious white focus ring for keyboard users */
+::selection { background: rgba(207, 228, 138, 0.6); color: #0C2A18; }
+
+h1, p, figure { margin: 0; }
+
+/* Focus: a clear white ring with a dark halo, visible on light and dark parts */
 :focus-visible {
-  outline: 6px solid var(--fg);
-  outline-offset: 6px;
+  outline: 3px solid #fff;
+  outline-offset: 4px;
+  box-shadow: 0 0 0 9px rgba(6, 30, 16, 0.55);
 }
 
-button {
+/* Shortcut hints sit quietly after the label */
+kbd {
   font: inherit;
-  font-weight: 700;
-  color: var(--fg);
-  background: var(--bg);
-  border: 4px solid var(--fg);
-  border-radius: 12px;
-  padding: 0.5em 1.2em;
-  cursor: pointer;
+  font-size: 0.62em;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  margin-left: 0.7em;
+  opacity: 0.7;
+}
+
+/* ---- Liquid glass ---- */
+.glass {
+  background: var(--glass-fill), var(--glass-tint);
+  border: 1px solid var(--glass-rim);
+  box-shadow: var(--glass-light), var(--glass-drop);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  border-radius: var(--radius);
+}
+
+.glass-button {
+  font: inherit;
+  font-size: 1.35rem;
+  font-weight: 500;
+  color: var(--text);
   min-height: 64px;
+  padding: 0.5em 1.6em;
+  border-radius: var(--radius);
+  border: 1px solid var(--glass-rim);
+  background: var(--glass-fill), var(--glass-tint);
+  box-shadow: var(--glass-light), var(--glass-drop);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  text-shadow: 0 1px 8px rgba(6, 30, 16, 0.35);
+  cursor: pointer;
+  transition: transform 140ms ease, background 140ms ease;
 }
 
-button:hover,
-button:active {
-  background: var(--fg);
-  color: var(--bg);
+.glass-button:hover {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.32), rgba(255, 255, 255, 0.12)), var(--glass-tint);
 }
 
-/* ---- Arduino status (top right) ---- */
-.corner-status {
+.glass-button:active { transform: translateY(1px); }
+
+/* The main action on each screen: a brighter pane */
+.glass-button.primary {
+  font-weight: 600;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.36), rgba(255, 255, 255, 0.14)), var(--glass-tint);
+  border-color: rgba(255, 255, 255, 0.8);
+}
+
+/* ---- Top bar ---- */
+.topbar {
   position: fixed;
-  top: 12px;
-  right: 16px;
-  font-size: 1.1rem;
-  text-align: right;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 32px;
 }
 
-.corner-status p {
-  margin: 0;
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
-/* ---- Input screen ---- */
+/* "lumi" drawn in dots */
+.logo-dots {
+  height: 40px;
+  width: auto;
+  fill: #fff;
+  filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.45)) drop-shadow(0 2px 8px rgba(6, 30, 16, 0.4));
+}
+
+.status-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.chip {
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 400;
+  color: var(--text);
+  padding: 0.4em 0.9em;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  background: var(--glass-fill), rgba(14, 44, 28, 0.35);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+}
+
+.chip:empty { display: none; }
+
+.chip-button { cursor: pointer; font-weight: 500; }
+
+/* ---- Text screen ---- */
 #input-screen {
-  max-width: 900px;
-  margin: 0 auto;
-  padding: 10vh 24px 24px;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 110px 20px 40px;
+}
+
+.panel {
+  width: min(820px, 100%);
+  padding: 44px;
 }
 
 h1 {
-  font-size: 3.5rem;
-  margin: 0 0 0.5em;
+  font-size: 2.8rem;
+  font-weight: 500;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  margin-bottom: 0.7em;
 }
 
 label {
   display: block;
-  font-size: 2rem;
-  margin-bottom: 0.4em;
+  font-size: 1.15rem;
+  color: var(--text-soft);
+  margin-bottom: 0.5em;
 }
 
 textarea {
   width: 100%;
   font: inherit;
-  font-size: 2.5rem;
-  color: var(--fg);
-  background: var(--bg);
-  border: 4px solid var(--fg);
-  border-radius: 12px;
-  padding: 0.4em;
+  font-size: 2.4rem;
+  font-weight: 400;
+  color: var(--text);
+  background: rgba(10, 36, 22, 0.42);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 10px;
+  padding: 0.35em 0.5em;
   resize: vertical;
 }
 
 .start-buttons {
   display: flex;
   flex-wrap: wrap;
-  gap: 24px;
-  margin-top: 0.5em;
+  gap: 12px;
+  margin-top: 26px;
 }
 
-.start-buttons button {
-  font-size: 2.5rem;
-  flex: 1;
-}
+.start-buttons .glass-button { flex: 1 1 150px; }
 
 .form-error:empty { display: none; }
-.form-error { font-weight: 700; margin: 0.5em 0 0; }
-.hint { font-size: 1.1rem; margin-top: 1em; }
+.form-error {
+  font-weight: 500;
+  margin-top: 0.7em;
+  padding: 0.6em 0.9em;
+  border-radius: 10px;
+  background: rgba(10, 36, 22, 0.6);
+}
 
-/* ---- Camera screen (Snap) ---- */
+/* ---- Camera screen (home): the camera fills the screen ---- */
 #camera-screen {
   height: 100vh;
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 3vh 16px 2vh;
-  gap: 2vh;
+  gap: 2.2vh;
+  padding: 84px 32px 3vh;
 }
 
-/* Grayscale keeps the page black and white */
-.camera {
+.camera-frame {
   flex: 1;
   min-height: 0;
-  max-width: 100%;
-  border: 4px solid var(--fg);
-  border-radius: 12px;
-  filter: grayscale(1) contrast(1.2);
+  width: 100%;
+  padding: 6px;
+  border-radius: 4px;
+}
+
+.camera {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 0;
+  background: rgba(10, 36, 22, 0.55);
+  transform: scaleX(-1); /* mirrored like a selfie camera; the photo sent to Gemini isn't */
 }
 
 .camera-status {
-  font-size: 2rem;
-  font-weight: 700;
-  margin: 0;
-  min-height: 1.4em;
+  font-size: 1.7rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
   text-align: center;
+  max-width: 40ch;
+  min-height: 1.4em;
+  text-shadow: 0 2px 16px rgba(6, 30, 16, 0.55);
 }
 
-/* ---- Reader screen ---- */
+/* While listening, the Talk button glows softly so it's clear the mic is on */
+.listening #talk-button {
+  animation: listening 1.6s ease-in-out infinite;
+  border-color: #fff;
+}
+
+@keyframes listening {
+  50% { box-shadow: var(--glass-light), var(--glass-drop), 0 0 0 8px rgba(255, 255, 255, 0.18); }
+}
+
+/* ---- Lesson screen ---- */
 #reader-screen {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  padding: 3vh 16px 2vh;
+  padding: 84px 32px 3vh;
 }
 
 .stage {
@@ -158,141 +346,198 @@ textarea {
   min-width: 0;
 }
 
-/* The current character: at least 40% of the screen height */
+/* The one bold thing: the letter, lit softly from within */
 .char {
   font-size: 40vh;
-  font-weight: 700;
-  line-height: 1;
   height: 40vh;
+  font-weight: 500;
+  letter-spacing: -0.04em;
+  line-height: 1;
   display: flex;
   align-items: center;
+  text-shadow: 0 0 40px rgba(255, 255, 255, 0.3), 0 6px 36px rgba(6, 30, 16, 0.55);
 }
+
+.char.small { font-size: 9vh; font-weight: 500; }
 
 .grids {
   display: flex;
-  gap: 8vw;
-  margin-top: 2vh;
+  align-items: center;
+  gap: 5vw;
+  margin-top: 3vh;
+  padding: 2.2vh 3.5vw;
 }
 
 .grid-block {
-  margin: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
 }
 
 .grid-block figcaption {
-  font-size: 1.25rem;
-  margin-top: 0.5vh;
+  font-size: 1rem;
+  color: var(--text-soft);
+  margin-top: 1vh;
 }
 
-/* Words like "Number sign" in Type mode's preview */
-.char.small {
-  font-size: 10vh;
-}
-
-/* 2 columns x 3 rows of dots */
+/* 2 columns x 3 rows of dots: solid = raised, ring = flat */
 .cell {
   display: grid;
   grid-template-columns: repeat(2, var(--dot-size));
   grid-template-rows: repeat(3, var(--dot-size));
-  gap: calc(var(--dot-size) * 0.4) calc(var(--dot-size) * 0.6);
+  gap: calc(var(--dot-size) * 0.45) calc(var(--dot-size) * 0.65);
 }
 
 .dot {
   border-radius: 50%;
-  border: 4px solid var(--fg);
-  background: var(--bg);
+  border: 2px solid rgba(255, 255, 255, 0.75);
+  background: transparent;
 }
 
 .dot.raised {
-  background: var(--fg);
+  background: #fff;
+  border-color: #fff;
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.45);
 }
 
-/* Clickable input dots: same look as the display dots, no hover fill */
 .dot-button {
   padding: 0;
-  min-height: 0;
-  border-radius: 50%;
+  cursor: pointer;
 }
 
-.dot-button:hover,
-.dot-button:active { background: var(--bg); }
-
-.dot-button.raised:hover,
-.dot-button.raised:active { background: var(--fg); }
-
 .position {
-  font-size: 1.75rem;
-  margin: 1.5vh 0 0;
+  font-size: 1.15rem;
+  color: var(--text-soft);
+  margin-top: 1.6vh;
 }
 
 .feedback {
-  font-size: 1.75rem;
-  font-weight: 700;
-  margin: 0.5vh 0 1vh;
+  font-size: 1.55rem;
+  font-weight: 500;
+  margin: 0.6vh 0 1vh;
   min-height: 1.4em;
   text-align: center;
+  text-shadow: 0 2px 14px rgba(6, 30, 16, 0.55);
 }
 
 /* Type mode */
+#reader-screen[data-mode="type"] .char { font-size: 30vh; height: 30vh; }
+#reader-screen[data-mode="type"] .feedback:empty { display: none; }
+
 .badges {
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  gap: 16px;
+  gap: 10px;
 }
 
 .badge {
-  font-size: 1.5rem;
-  font-weight: 700;
-  border: 4px solid var(--fg);
-  border-radius: 12px;
-  padding: 0.2em 0.6em;
+  font-size: 1.05rem;
+  font-weight: 500;
+  padding: 0.35em 0.9em;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  color: var(--text-soft);
 }
 
 .badge.on {
-  background: var(--fg);
-  color: var(--bg);
-}
-
-/* Type mode: smaller preview so the typed text fits on screen */
-#reader-screen[data-mode="type"] .char {
-  font-size: 32vh;
-  height: 32vh;
-}
-
-#reader-screen[data-mode="type"] .feedback:empty {
-  display: none;
+  background: #fff;
+  color: var(--forest);
 }
 
 .typed-text {
-  font-size: 3rem;
-  font-weight: 700;
-  margin: 2vh 0 0;
-  min-height: 1.3em;
+  font-size: 2.6rem;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  margin-top: 2vh;
+  min-height: 1.6em;
   width: min(80vw, 900px);
+  padding: 0.15em 0.6em;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   text-align: center;
-  border-bottom: 4px solid var(--fg);
-  padding: 0 0.3em;
 }
 
 .side-button {
-  font-size: 4rem;
-  width: min(14vw, 160px);
-  height: 50vh;
+  width: min(9vw, 96px);
+  height: min(9vw, 96px);
   padding: 0;
+  display: grid;
+  place-items: center;
+}
+
+.side-button svg {
+  width: 40%;
+  height: 40%;
+  fill: none;
+  stroke: #fff;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .controls {
   display: flex;
   justify-content: center;
   flex-wrap: wrap;
-  gap: 24px;
+  gap: 12px;
 }
 
-.controls button {
-  font-size: 1.75rem;
+/* ---- Small screens ---- */
+@media (max-width: 640px) {
+  .topbar { padding: 14px 16px; }
+  .status-chips { display: none; }
+  .panel { padding: 26px; }
+  h1 { font-size: 2.1rem; }
+  .glass-button { font-size: 1.2rem; min-height: 58px; padding: 0.5em 1.2em; }
+  /* Let screens grow and scroll instead of squeezing */
+  #reader-screen, #camera-screen { height: auto; min-height: 100vh; padding: 72px 16px 3vh; }
+  .char { font-size: 30vh; height: 30vh; }
+  .grids { gap: 12vw; padding: 2vh 7vw; }
+  .side-button { width: 52px; height: 52px; }
+  .stage { gap: 8px; }
+  .camera-frame { flex: none; aspect-ratio: 4 / 3; }
+  .controls { margin-top: 2vh; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flow { animation: none; }
+  .listening #talk-button { animation: none; box-shadow: 0 0 0 4px #fff; }
+  .glass-button { transition: none; }
+}
+
+/* ---- High contrast: plain black and white, no glass (app.js sets data-contrast) ---- */
+:root[data-contrast="high"] { font-weight: 500; }
+:root[data-contrast="high"] body { background: #000; }
+:root[data-contrast="high"] body::after,
+:root[data-contrast="high"] .backdrop { display: none; }
+
+:root[data-contrast="high"] .glass,
+:root[data-contrast="high"] .glass-button,
+:root[data-contrast="high"] .chip,
+:root[data-contrast="high"] textarea,
+:root[data-contrast="high"] .form-error {
+  background: #000;
+  border: 3px solid #fff;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  text-shadow: none;
+}
+
+:root[data-contrast="high"] .char,
+:root[data-contrast="high"] .camera-status,
+:root[data-contrast="high"] .feedback { text-shadow: none; }
+
+:root[data-contrast="high"] .char { font-weight: 700; }
+:root[data-contrast="high"] kbd { opacity: 1; }
+:root[data-contrast="high"] .dot { border: 3px solid #fff; }
+:root[data-contrast="high"] .dot.raised { box-shadow: none; }
+:root[data-contrast="high"] .logo-dots { filter: none; }
+
+:root[data-contrast="high"] .glass-button:hover,
+:root[data-contrast="high"] .chip-button[aria-pressed="true"],
+:root[data-contrast="high"] .badge.on,
+:root[data-contrast="high"] .listening #talk-button {
+  background: #fff;
+  color: #000;
 }

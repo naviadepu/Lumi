@@ -3,59 +3,75 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Braille Reader</title>
-  <!-- Atkinson Hyperlegible was designed for low-vision readers. Falls back to system sans-serif offline. -->
+  <title>Lumi</title>
+  <!-- The logo: braille "L" (dots 1-2-3) for Lumi -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%230B3320'/%3E%3Cg fill='%23fff'%3E%3Ccircle cx='11' cy='8' r='3.2'/%3E%3Ccircle cx='11' cy='16' r='3.2'/%3E%3Ccircle cx='11' cy='24' r='3.2'/%3E%3C/g%3E%3Cg fill='%23fff' opacity='.3'%3E%3Ccircle cx='21' cy='8' r='3.2'/%3E%3Ccircle cx='21' cy='16' r='3.2'/%3E%3Ccircle cx='21' cy='24' r='3.2'/%3E%3C/g%3E%3C/svg%3E">
+  <!-- SF Pro on the Mac (the system font); Inter everywhere else. -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300..600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-  <div class="corner-status">
-    <p id="arduino-status" role="status">Arduino: not connected</p>
-    <p id="camera-permission"></p>
+  <!-- Flowing background: two copies of the swirl drifting through each other -->
+  <div class="backdrop" aria-hidden="true">
+    <div class="flow flow-a"></div>
+    <div class="flow flow-b"></div>
   </div>
 
-  <!-- Screen 1: enter text -->
-  <main id="input-screen">
-    <h1>Braille Reader</h1>
-    <form id="text-form">
-      <label for="text-input">Letters, numbers or text</label>
-      <textarea id="text-input" rows="3" autocomplete="off" spellcheck="false">abc</textarea>
+  <header class="topbar">
+    <div class="logo" role="img" aria-label="Lumi">
+<!-- "lumi" drawn in dots (the letters traced on a dot grid), like braille and the dotted ASCII art references -->
+      <svg class="logo-dots" viewBox="0 0 277.8 109.8" aria-hidden="true"><circle cx="2.4" cy="2.4" r="2.4"/><circle cx="9.4" cy="2.4" r="2.4"/><circle cx="16.4" cy="2.4" r="2.4"/><circle cx="261.4" cy="2.4" r="2.4"/><circle cx="268.4" cy="2.4" r="2.4"/><circle cx="275.4" cy="2.4" r="2.4"/><circle cx="2.4" cy="9.4" r="2.4"/><circle cx="9.4" cy="9.4" r="2.4"/><circle cx="16.4" cy="9.4" r="2.4"/><circle cx="261.4" cy="9.4" r="2.4"/><circle cx="268.4" cy="9.4" r="2.4"/><circle cx="275.4" cy="9.4" r="2.4"/><circle cx="2.4" cy="16.4" r="2.4"/><circle cx="9.4" cy="16.4" r="2.4"/><circle cx="16.4" cy="16.4" r="2.4"/><circle cx="261.4" cy="16.4" r="2.4"/><circle cx="268.4" cy="16.4" r="2.4"/><circle cx="275.4" cy="16.4" r="2.4"/><circle cx="2.4" cy="23.4" r="2.4"/><circle cx="9.4" cy="23.4" r="2.4"/><circle cx="16.4" cy="23.4" r="2.4"/><circle cx="2.4" cy="30.4" r="2.4"/><circle cx="9.4" cy="30.4" r="2.4"/><circle cx="16.4" cy="30.4" r="2.4"/><circle cx="163.4" cy="30.4" r="2.4"/><circle cx="170.4" cy="30.4" r="2.4"/><circle cx="212.4" cy="30.4" r="2.4"/><circle cx="219.4" cy="30.4" r="2.4"/><circle cx="2.4" cy="37.4" r="2.4"/><circle cx="9.4" cy="37.4" r="2.4"/><circle cx="16.4" cy="37.4" r="2.4"/><circle cx="37.4" cy="37.4" r="2.4"/><circle cx="44.4" cy="37.4" r="2.4"/><circle cx="51.4" cy="37.4" r="2.4"/><circle cx="86.4" cy="37.4" r="2.4"/><circle cx="93.4" cy="37.4" r="2.4"/><circle cx="100.4" cy="37.4" r="2.4"/><circle cx="107.4" cy="37.4" r="2.4"/><circle cx="128.4" cy="37.4" r="2.4"/><circle cx="135.4" cy="37.4" r="2.4"/><circle cx="142.4" cy="37.4" r="2.4"/><circle cx="149.4" cy="37.4" r="2.4"/><circle cx="156.4" cy="37.4" r="2.4"/><circle cx="163.4" cy="37.4" r="2.4"/><circle cx="170.4" cy="37.4" r="2.4"/><circle cx="177.4" cy="37.4" r="2.4"/><circle cx="184.4" cy="37.4" r="2.4"/><circle cx="198.4" cy="37.4" r="2.4"/><circle cx="205.4" cy="37.4" r="2.4"/><circle cx="212.4" cy="37.4" r="2.4"/><circle cx="219.4" cy="37.4" r="2.4"/><circle cx="226.4" cy="37.4" r="2.4"/><circle cx="233.4" cy="37.4" r="2.4"/><circle cx="261.4" cy="37.4" r="2.4"/><circle cx="268.4" cy="37.4" r="2.4"/><circle cx="275.4" cy="37.4" r="2.4"/><circle cx="2.4" cy="44.4" r="2.4"/><circle cx="9.4" cy="44.4" r="2.4"/><circle cx="16.4" cy="44.4" r="2.4"/><circle cx="37.4" cy="44.4" r="2.4"/><circle cx="44.4" cy="44.4" r="2.4"/><circle cx="51.4" cy="44.4" r="2.4"/><circle cx="86.4" cy="44.4" r="2.4"/><circle cx="93.4" cy="44.4" r="2.4"/><circle cx="100.4" cy="44.4" r="2.4"/><circle cx="107.4" cy="44.4" r="2.4"/><circle cx="128.4" cy="44.4" r="2.4"/><circle cx="135.4" cy="44.4" r="2.4"/><circle cx="142.4" cy="44.4" r="2.4"/><circle cx="149.4" cy="44.4" r="2.4"/><circle cx="156.4" cy="44.4" r="2.4"/><circle cx="163.4" cy="44.4" r="2.4"/><circle cx="170.4" cy="44.4" r="2.4"/><circle cx="177.4" cy="44.4" r="2.4"/><circle cx="184.4" cy="44.4" r="2.4"/><circle cx="191.4" cy="44.4" r="2.4"/><circle cx="198.4" cy="44.4" r="2.4"/><circle cx="205.4" cy="44.4" r="2.4"/><circle cx="212.4" cy="44.4" r="2.4"/><circle cx="219.4" cy="44.4" r="2.4"/><circle cx="226.4" cy="44.4" r="2.4"/><circle cx="233.4" cy="44.4" r="2.4"/><circle cx="240.4" cy="44.4" r="2.4"/><circle cx="261.4" cy="44.4" r="2.4"/><circle cx="268.4" cy="44.4" r="2.4"/><circle cx="275.4" cy="44.4" r="2.4"/><circle cx="2.4" cy="51.4" r="2.4"/><circle cx="9.4" cy="51.4" r="2.4"/><circle cx="16.4" cy="51.4" r="2.4"/><circle cx="37.4" cy="51.4" r="2.4"/><circle cx="44.4" cy="51.4" r="2.4"/><circle cx="51.4" cy="51.4" r="2.4"/><circle cx="86.4" cy="51.4" r="2.4"/><circle cx="93.4" cy="51.4" r="2.4"/><circle cx="100.4" cy="51.4" r="2.4"/><circle cx="107.4" cy="51.4" r="2.4"/><circle cx="128.4" cy="51.4" r="2.4"/><circle cx="135.4" cy="51.4" r="2.4"/><circle cx="142.4" cy="51.4" r="2.4"/><circle cx="149.4" cy="51.4" r="2.4"/><circle cx="170.4" cy="51.4" r="2.4"/><circle cx="177.4" cy="51.4" r="2.4"/><circle cx="184.4" cy="51.4" r="2.4"/><circle cx="191.4" cy="51.4" r="2.4"/><circle cx="198.4" cy="51.4" r="2.4"/><circle cx="219.4" cy="51.4" r="2.4"/><circle cx="226.4" cy="51.4" r="2.4"/><circle cx="233.4" cy="51.4" r="2.4"/><circle cx="240.4" cy="51.4" r="2.4"/><circle cx="261.4" cy="51.4" r="2.4"/><circle cx="268.4" cy="51.4" r="2.4"/><circle cx="275.4" cy="51.4" r="2.4"/><circle cx="2.4" cy="58.4" r="2.4"/><circle cx="9.4" cy="58.4" r="2.4"/><circle cx="16.4" cy="58.4" r="2.4"/><circle cx="37.4" cy="58.4" r="2.4"/><circle cx="44.4" cy="58.4" r="2.4"/><circle cx="51.4" cy="58.4" r="2.4"/><circle cx="86.4" cy="58.4" r="2.4"/><circle cx="93.4" cy="58.4" r="2.4"/><circle cx="100.4" cy="58.4" r="2.4"/><circle cx="107.4" cy="58.4" r="2.4"/><circle cx="128.4" cy="58.4" r="2.4"/><circle cx="135.4" cy="58.4" r="2.4"/><circle cx="142.4" cy="58.4" r="2.4"/><circle cx="177.4" cy="58.4" r="2.4"/><circle cx="184.4" cy="58.4" r="2.4"/><circle cx="191.4" cy="58.4" r="2.4"/><circle cx="226.4" cy="58.4" r="2.4"/><circle cx="233.4" cy="58.4" r="2.4"/><circle cx="240.4" cy="58.4" r="2.4"/><circle cx="261.4" cy="58.4" r="2.4"/><circle cx="268.4" cy="58.4" r="2.4"/><circle cx="275.4" cy="58.4" r="2.4"/><circle cx="2.4" cy="65.4" r="2.4"/><circle cx="9.4" cy="65.4" r="2.4"/><circle cx="16.4" cy="65.4" r="2.4"/><circle cx="37.4" cy="65.4" r="2.4"/><circle cx="44.4" cy="65.4" r="2.4"/><circle cx="51.4" cy="65.4" r="2.4"/><circle cx="86.4" cy="65.4" r="2.4"/><circle cx="93.4" cy="65.4" r="2.4"/><circle cx="100.4" cy="65.4" r="2.4"/><circle cx="107.4" cy="65.4" r="2.4"/><circle cx="128.4" cy="65.4" r="2.4"/><circle cx="135.4" cy="65.4" r="2.4"/><circle cx="142.4" cy="65.4" r="2.4"/><circle cx="177.4" cy="65.4" r="2.4"/><circle cx="184.4" cy="65.4" r="2.4"/><circle cx="191.4" cy="65.4" r="2.4"/><circle cx="226.4" cy="65.4" r="2.4"/><circle cx="233.4" cy="65.4" r="2.4"/><circle cx="240.4" cy="65.4" r="2.4"/><circle cx="261.4" cy="65.4" r="2.4"/><circle cx="268.4" cy="65.4" r="2.4"/><circle cx="275.4" cy="65.4" r="2.4"/><circle cx="2.4" cy="72.4" r="2.4"/><circle cx="9.4" cy="72.4" r="2.4"/><circle cx="16.4" cy="72.4" r="2.4"/><circle cx="37.4" cy="72.4" r="2.4"/><circle cx="44.4" cy="72.4" r="2.4"/><circle cx="51.4" cy="72.4" r="2.4"/><circle cx="86.4" cy="72.4" r="2.4"/><circle cx="93.4" cy="72.4" r="2.4"/><circle cx="100.4" cy="72.4" r="2.4"/><circle cx="107.4" cy="72.4" r="2.4"/><circle cx="128.4" cy="72.4" r="2.4"/><circle cx="135.4" cy="72.4" r="2.4"/><circle cx="142.4" cy="72.4" r="2.4"/><circle cx="177.4" cy="72.4" r="2.4"/><circle cx="184.4" cy="72.4" r="2.4"/><circle cx="191.4" cy="72.4" r="2.4"/><circle cx="226.4" cy="72.4" r="2.4"/><circle cx="233.4" cy="72.4" r="2.4"/><circle cx="240.4" cy="72.4" r="2.4"/><circle cx="261.4" cy="72.4" r="2.4"/><circle cx="268.4" cy="72.4" r="2.4"/><circle cx="275.4" cy="72.4" r="2.4"/><circle cx="2.4" cy="79.4" r="2.4"/><circle cx="9.4" cy="79.4" r="2.4"/><circle cx="16.4" cy="79.4" r="2.4"/><circle cx="37.4" cy="79.4" r="2.4"/><circle cx="44.4" cy="79.4" r="2.4"/><circle cx="51.4" cy="79.4" r="2.4"/><circle cx="86.4" cy="79.4" r="2.4"/><circle cx="93.4" cy="79.4" r="2.4"/><circle cx="100.4" cy="79.4" r="2.4"/><circle cx="107.4" cy="79.4" r="2.4"/><circle cx="128.4" cy="79.4" r="2.4"/><circle cx="135.4" cy="79.4" r="2.4"/><circle cx="142.4" cy="79.4" r="2.4"/><circle cx="177.4" cy="79.4" r="2.4"/><circle cx="184.4" cy="79.4" r="2.4"/><circle cx="191.4" cy="79.4" r="2.4"/><circle cx="226.4" cy="79.4" r="2.4"/><circle cx="233.4" cy="79.4" r="2.4"/><circle cx="240.4" cy="79.4" r="2.4"/><circle cx="261.4" cy="79.4" r="2.4"/><circle cx="268.4" cy="79.4" r="2.4"/><circle cx="275.4" cy="79.4" r="2.4"/><circle cx="2.4" cy="86.4" r="2.4"/><circle cx="9.4" cy="86.4" r="2.4"/><circle cx="16.4" cy="86.4" r="2.4"/><circle cx="37.4" cy="86.4" r="2.4"/><circle cx="44.4" cy="86.4" r="2.4"/><circle cx="51.4" cy="86.4" r="2.4"/><circle cx="86.4" cy="86.4" r="2.4"/><circle cx="93.4" cy="86.4" r="2.4"/><circle cx="100.4" cy="86.4" r="2.4"/><circle cx="107.4" cy="86.4" r="2.4"/><circle cx="128.4" cy="86.4" r="2.4"/><circle cx="135.4" cy="86.4" r="2.4"/><circle cx="142.4" cy="86.4" r="2.4"/><circle cx="177.4" cy="86.4" r="2.4"/><circle cx="184.4" cy="86.4" r="2.4"/><circle cx="191.4" cy="86.4" r="2.4"/><circle cx="226.4" cy="86.4" r="2.4"/><circle cx="233.4" cy="86.4" r="2.4"/><circle cx="240.4" cy="86.4" r="2.4"/><circle cx="261.4" cy="86.4" r="2.4"/><circle cx="268.4" cy="86.4" r="2.4"/><circle cx="275.4" cy="86.4" r="2.4"/><circle cx="2.4" cy="93.4" r="2.4"/><circle cx="9.4" cy="93.4" r="2.4"/><circle cx="16.4" cy="93.4" r="2.4"/><circle cx="37.4" cy="93.4" r="2.4"/><circle cx="44.4" cy="93.4" r="2.4"/><circle cx="51.4" cy="93.4" r="2.4"/><circle cx="58.4" cy="93.4" r="2.4"/><circle cx="79.4" cy="93.4" r="2.4"/><circle cx="86.4" cy="93.4" r="2.4"/><circle cx="93.4" cy="93.4" r="2.4"/><circle cx="100.4" cy="93.4" r="2.4"/><circle cx="107.4" cy="93.4" r="2.4"/><circle cx="128.4" cy="93.4" r="2.4"/><circle cx="135.4" cy="93.4" r="2.4"/><circle cx="142.4" cy="93.4" r="2.4"/><circle cx="177.4" cy="93.4" r="2.4"/><circle cx="184.4" cy="93.4" r="2.4"/><circle cx="191.4" cy="93.4" r="2.4"/><circle cx="226.4" cy="93.4" r="2.4"/><circle cx="233.4" cy="93.4" r="2.4"/><circle cx="240.4" cy="93.4" r="2.4"/><circle cx="261.4" cy="93.4" r="2.4"/><circle cx="268.4" cy="93.4" r="2.4"/><circle cx="275.4" cy="93.4" r="2.4"/><circle cx="2.4" cy="100.4" r="2.4"/><circle cx="9.4" cy="100.4" r="2.4"/><circle cx="16.4" cy="100.4" r="2.4"/><circle cx="44.4" cy="100.4" r="2.4"/><circle cx="51.4" cy="100.4" r="2.4"/><circle cx="58.4" cy="100.4" r="2.4"/><circle cx="65.4" cy="100.4" r="2.4"/><circle cx="72.4" cy="100.4" r="2.4"/><circle cx="79.4" cy="100.4" r="2.4"/><circle cx="93.4" cy="100.4" r="2.4"/><circle cx="100.4" cy="100.4" r="2.4"/><circle cx="107.4" cy="100.4" r="2.4"/><circle cx="128.4" cy="100.4" r="2.4"/><circle cx="135.4" cy="100.4" r="2.4"/><circle cx="142.4" cy="100.4" r="2.4"/><circle cx="177.4" cy="100.4" r="2.4"/><circle cx="184.4" cy="100.4" r="2.4"/><circle cx="191.4" cy="100.4" r="2.4"/><circle cx="226.4" cy="100.4" r="2.4"/><circle cx="233.4" cy="100.4" r="2.4"/><circle cx="240.4" cy="100.4" r="2.4"/><circle cx="261.4" cy="100.4" r="2.4"/><circle cx="268.4" cy="100.4" r="2.4"/><circle cx="275.4" cy="100.4" r="2.4"/><circle cx="2.4" cy="107.4" r="2.4"/><circle cx="9.4" cy="107.4" r="2.4"/><circle cx="16.4" cy="107.4" r="2.4"/><circle cx="51.4" cy="107.4" r="2.4"/><circle cx="58.4" cy="107.4" r="2.4"/><circle cx="65.4" cy="107.4" r="2.4"/><circle cx="72.4" cy="107.4" r="2.4"/><circle cx="93.4" cy="107.4" r="2.4"/><circle cx="100.4" cy="107.4" r="2.4"/><circle cx="107.4" cy="107.4" r="2.4"/><circle cx="128.4" cy="107.4" r="2.4"/><circle cx="135.4" cy="107.4" r="2.4"/><circle cx="142.4" cy="107.4" r="2.4"/><circle cx="177.4" cy="107.4" r="2.4"/><circle cx="184.4" cy="107.4" r="2.4"/><circle cx="191.4" cy="107.4" r="2.4"/><circle cx="226.4" cy="107.4" r="2.4"/><circle cx="233.4" cy="107.4" r="2.4"/><circle cx="240.4" cy="107.4" r="2.4"/><circle cx="261.4" cy="107.4" r="2.4"/><circle cx="268.4" cy="107.4" r="2.4"/><circle cx="275.4" cy="107.4" r="2.4"/></svg>
+    </div>
+    <div class="status-chips">
+      <p id="arduino-status" class="chip" role="status">Arduino: not connected</p>
+      <p id="camera-permission" class="chip"></p>
+      <button type="button" id="contrast-toggle" class="chip chip-button" aria-pressed="false">High contrast</button>
+    </div>
+  </header>
+
+  <!-- Text screen: for sighted helpers (Escape from the camera) -->
+  <main id="input-screen" hidden>
+    <form id="text-form" class="glass panel">
+      <h1>What should we learn?</h1>
+      <label for="text-input">Type a word or a few letters</label>
+      <textarea id="text-input" rows="2" autocomplete="off" spellcheck="false">abc</textarea>
       <p id="form-error" class="form-error" role="alert"></p>
       <div class="start-buttons">
-        <button type="submit" id="snap-button" data-mode="snap" aria-label="Snap: learn a word from something you hold up to the camera">Snap</button>
-        <button type="submit" id="learn-button" data-mode="learn" aria-label="Learn: type each letter in braille">Learn</button>
-        <button type="submit" id="read-button" data-mode="read" aria-label="Read: show each character in braille">Read</button>
-        <button type="submit" id="type-button" data-mode="type" aria-label="Type: write freely with the remote">Type</button>
+        <button type="submit" id="learn-button" class="glass-button primary" data-mode="learn" aria-label="Learn: type each letter in braille">Learn</button>
+        <button type="submit" id="read-button" class="glass-button" data-mode="read" aria-label="Read: show each character in braille">Read</button>
+        <button type="submit" id="type-button" class="glass-button" data-mode="type" aria-label="Type: write freely with the remote">Type</button>
+        <button type="submit" id="snap-button" class="glass-button" data-mode="snap" aria-label="Camera: learn the name of something you hold up">Camera</button>
       </div>
-      <p class="hint">Snap: hold something up to the camera and learn its name in braille.
-        The remote's Enter button starts Snap. Ctrl + Enter starts Learn with the text above.</p>
     </form>
   </main>
 
-  <!-- Snap: webcam -> Gemini picks a word -> Learn mode teaches it -->
+  <!-- Home: hold up an object (automatic), or press Enter and say what to learn -->
   <main id="camera-screen" hidden>
-    <video id="camera" class="camera" autoplay playsinline muted aria-label="Camera view"></video>
+    <div class="camera-frame glass">
+      <video id="camera" class="camera" autoplay playsinline muted aria-label="Camera view"></video>
+    </div>
     <p id="camera-status" class="camera-status" role="status"></p>
     <div class="controls">
-      <button type="button" id="shutter-button" aria-label="Take photo (Enter)">Take photo (Enter)</button>
-      <button type="button" id="camera-back-button" aria-label="Back (Escape)">Back (Esc)</button>
+      <button type="button" id="talk-button" class="glass-button primary" aria-label="Talk: say what you want to learn (Enter)">Talk <kbd>Enter</kbd></button>
+      <button type="button" id="shutter-button" class="glass-button" aria-label="Look now: take the photo">Look now</button>
+      <button type="button" id="camera-back-button" class="glass-button" aria-label="Type text instead (Escape)">Type text <kbd>Esc</kbd></button>
     </div>
   </main>
 
-  <!-- Screen 2: one character at a time (Learn, Read and Type modes).
+  <!-- Lesson: one character at a time (Learn, Read and Type modes).
        Elements with data-show only appear in the listed modes. -->
   <main id="reader-screen" hidden>
     <div class="stage">
-      <button type="button" id="prev-button" class="side-button" data-show="learn read" aria-label="Previous (Left arrow)">
-        <span aria-hidden="true">&#9664;</span>
+      <button type="button" id="prev-button" class="side-button glass-button" data-show="learn read" aria-label="Previous (Left arrow)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
       </button>
 
       <div class="center">
         <div id="char" class="char" role="img" aria-label=""></div>
 
-        <div class="grids">
+        <div class="grids glass">
           <figure class="grid-block" data-show="learn read">
             <div id="cell" class="cell" role="img" aria-label="">
               <!-- Grid order is row by row: 1 4 / 2 5 / 3 6 -->
@@ -68,12 +84,12 @@
 
           <figure class="grid-block" data-show="learn type">
             <div id="input-cell" class="cell" role="group" aria-label="Your input">
-              <button type="button" class="dot dot-button" data-dot="1" aria-pressed="false" aria-label="Top left (key 1 or F)"></button>
-              <button type="button" class="dot dot-button" data-dot="4" aria-pressed="false" aria-label="Top right (key 4 or J)"></button>
-              <button type="button" class="dot dot-button" data-dot="2" aria-pressed="false" aria-label="Middle left (key 2 or D)"></button>
-              <button type="button" class="dot dot-button" data-dot="5" aria-pressed="false" aria-label="Middle right (key 5 or K)"></button>
-              <button type="button" class="dot dot-button" data-dot="3" aria-pressed="false" aria-label="Bottom left (key 3 or S)"></button>
-              <button type="button" class="dot dot-button" data-dot="6" aria-pressed="false" aria-label="Bottom right (key 6 or L)"></button>
+              <button type="button" class="dot dot-button" data-dot="1" aria-pressed="false" aria-label="1, top left (key 1 or F)"></button>
+              <button type="button" class="dot dot-button" data-dot="4" aria-pressed="false" aria-label="4, top right (key 4 or J)"></button>
+              <button type="button" class="dot dot-button" data-dot="2" aria-pressed="false" aria-label="2, middle left (key 2 or D)"></button>
+              <button type="button" class="dot dot-button" data-dot="5" aria-pressed="false" aria-label="5, middle right (key 5 or K)"></button>
+              <button type="button" class="dot dot-button" data-dot="3" aria-pressed="false" aria-label="3, bottom left (key 3 or S)"></button>
+              <button type="button" class="dot dot-button" data-dot="6" aria-pressed="false" aria-label="6, bottom right (key 6 or L)"></button>
             </div>
             <figcaption>You</figcaption>
           </figure>
@@ -85,21 +101,21 @@
 
         <p id="position" class="position" data-show="learn read"></p>
         <p id="feedback" class="feedback" data-show="learn type"></p>
-        <p id="typed-text" class="typed-text" data-show="type" aria-label="Typed text"></p>
+        <p id="typed-text" class="typed-text glass" data-show="type" aria-label="Typed text"></p>
       </div>
 
-      <button type="button" id="next-button" class="side-button" data-show="learn read" aria-label="Next (Right arrow)">
-        <span aria-hidden="true">&#9654;</span>
+      <button type="button" id="next-button" class="side-button glass-button" data-show="learn read" aria-label="Next (Right arrow)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>
       </button>
     </div>
 
     <div class="controls">
-      <button type="button" id="check-button" data-show="learn" aria-label="Check my answer (Enter)">Check (Enter)</button>
-      <button type="button" id="enter-button" data-show="type" aria-label="Type this cell (Enter)">Enter</button>
-      <button type="button" id="backspace-button" data-show="type" aria-label="Delete last character (Backspace)">Backspace</button>
-      <button type="button" id="clear-button" data-show="type" aria-label="Clear all typed text">Clear</button>
-      <button type="button" id="repeat-button" aria-label="Repeat (R)">Repeat (R)</button>
-      <button type="button" id="back-button" aria-label="Back to text input (Escape)">New text (Esc)</button>
+      <button type="button" id="check-button" class="glass-button primary" data-show="learn" aria-label="Check my answer (Enter)">Check <kbd>Enter</kbd></button>
+      <button type="button" id="enter-button" class="glass-button primary" data-show="type" aria-label="Type this cell (Enter)">Enter</button>
+      <button type="button" id="backspace-button" class="glass-button" data-show="type" aria-label="Delete last character (Backspace)">Delete</button>
+      <button type="button" id="clear-button" class="glass-button" data-show="type" aria-label="Clear all typed text">Clear</button>
+      <button type="button" id="repeat-button" class="glass-button" aria-label="Repeat (R)">Repeat <kbd>R</kbd></button>
+      <button type="button" id="back-button" class="glass-button" aria-label="Done (Escape)">Done <kbd>Esc</kbd></button>
     </div>
   </main>
 

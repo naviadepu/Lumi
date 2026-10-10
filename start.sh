@@ -1,10 +1,10 @@
 #!/bin/sh
-# Start Braille Reader hands-free (macOS): the server, plus Chrome as a full-screen app
-# that may use the camera and play sound without anyone clicking the page first.
+# Start Lumi hands-free (macOS): the server, plus Chrome as a full-screen app
+# that may use the camera and microphone and play sound without anyone clicking first.
 #
 #   ./start.sh
 #
-# Chrome uses its own profile (~/.braille-reader-chrome) so these settings don't touch
+# Chrome uses its own profile (~/.lumi-chrome) so these settings don't touch
 # your normal browser. Quit it with Cmd+Q.
 
 cd "$(dirname "$0")"
@@ -17,7 +17,7 @@ open_app() {
     curl -s "$URL/api/status" >/dev/null && break
     sleep 0.5
   done
-  "$CHROME" --user-data-dir="$HOME/.braille-reader-chrome" --app="$URL" --start-fullscreen \
+  "$CHROME" --user-data-dir="$HOME/.lumi-chrome" --app="$URL" --start-fullscreen \
     --autoplay-policy=no-user-gesture-required --use-fake-ui-for-media-stream \
     --no-first-run --no-default-browser-check >/dev/null 2>&1 &
 }

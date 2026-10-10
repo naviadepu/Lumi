@@ -1,4 +1,4 @@
-"""Braille Reader backend.
+"""Lumi backend.
 
 Run with:  python -m app.main
 """
@@ -14,12 +14,13 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from app.arduino import ArduinoLink, RemoteParser
+from app.assistant import Assistant, AssistantUnavailable
 from app import coach
 from app.braille import pattern_for, text_to_steps
 from app.tts import ElevenLabsTTS, TTSUnavailable
@@ -44,12 +45,21 @@ tts = ElevenLabsTTS(
 
 # Letters on the rotating braille wheel (must match WHEEL_LETTERS in braille_remote.ino).
 WHEEL_LETTERS = "".join(sorted(set(os.getenv("WHEEL_LETTERS", "abceilnp").strip().lower())))
+# Wheel-only: lessons only use wheel letters (others are skipped with an explanation).
+WHEEL_ONLY = os.getenv("WHEEL_ONLY", "true").strip().lower() in ("1", "true", "yes")
 # The wheel shows dot patterns, so a digit is "on the wheel" if its letter is (1 = a, 5 = e, ...).
 WHEEL_PATTERNS = {pattern_for(c) for c in WHEEL_LETTERS} - {"000000"}
 
 vision = GeminiVision(
     api_key=os.getenv("GEMINI_API_KEY", "").strip(),
     model=os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite").strip(),
+    wheel_letters=WHEEL_LETTERS,
+)
+
+assistant = Assistant(
+    elevenlabs_key=os.getenv("ELEVENLABS_API_KEY", "").strip(),
+    gemini_key=os.getenv("GEMINI_API_KEY", "").strip(),
+    gemini_model=os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite").strip(),
     wheel_letters=WHEEL_LETTERS,
 )
 
@@ -117,7 +127,7 @@ async def lifespan(app):
     arduino.stop()
 
 
-app = FastAPI(title="Braille Reader", lifespan=lifespan)
+app = FastAPI(title="Lumi", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
@@ -144,7 +154,7 @@ def steps(req: StepsRequest):
     """Text -> list of braille cells to show one at a time, each with a memory hint."""
     steps = text_to_steps(req.text, LETTER_PREFIX, NUMBER_PREFIX)
     for step in steps:
-        step["hint"] = coach.hint(step["char"], step["is_number_sign"])
+        step["hint"] = coach.hint(step["char"], step["is_number_sign"], WHEEL_LETTERS if WHEEL_ONLY else None)
         step["on_wheel"] = step["pattern"] in WHEEL_PATTERNS
     return {"steps": steps}
 
@@ -175,7 +185,31 @@ def show(req: ShowRequest):
 
 @app.get("/api/status")
 def status():
-    return {"arduino": arduino.connected, "elevenlabs": tts.enabled, "vision": vision.enabled}
+    return {
+        "arduino": arduino.connected,
+        "elevenlabs": tts.enabled,
+        "vision": vision.enabled,
+        "ask": assistant.enabled,
+        "wheel_letters": WHEEL_LETTERS,
+        "wheel_only": WHEEL_ONLY,
+    }
+
+
+MAX_RECORDING_BYTES = 5_000_000
+
+
+@app.post("/api/listen")
+async def listen(request: Request, asked: str = Query("", max_length=200)):
+    """Ask mode: raw recording in the body (audio/webm from the mic) -> what to learn, or a question."""
+    audio = await request.body()
+    if not audio or len(audio) > MAX_RECORDING_BYTES:
+        raise HTTPException(status_code=400, detail="Expected a short recording")
+    mime_type = request.headers.get("content-type", "audio/webm").split(";")[0]
+    try:
+        return await assistant.listen(audio, mime_type, asked)
+    except AssistantUnavailable as e:
+        log.warning("Ask unavailable: %s", e)
+        raise HTTPException(status_code=503, detail=str(e))
 
 
 class ClientLog(BaseModel):

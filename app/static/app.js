@@ -1,4 +1,4 @@
-// Braille Reader front end. Plain JavaScript, no build step.
+// Lumi front end. Plain JavaScript, no build step.
 //
 // Three modes share one screen (elements with data-show="..." only appear in those modes):
 //   Learn: "Type the letter A." The user presses dots (remote or keyboard) and Enter.
@@ -38,6 +38,9 @@ let index = 0;
 let entered = [false, false, false, false, false, false]; // dots 1-6 the user pressed
 let elevenLabsEnabled = true;
 let visionEnabled = false;
+let askEnabled = false;
+let wheelOnly = false;       // lessons only use the letters on the wheel
+let wheelLetters = "abceilnp";
 let lessonWord = "";   // Snap: the word from the photo, e.g. "Tylenol"
 
 // Type mode state (the remote keeps its own copy and reports it in "mode" messages).
@@ -326,7 +329,7 @@ async function checkAnswer(answer = enteredPattern()) {
     lessonWord = "";
     openCamera({ speak: false, waitForNewObject: true });
     cameraStatus.textContent = `You wrote ${word} in braille! Hold up something new.`;
-    say([`You just wrote ${word} in braille! ${summary.spoken}`, "Hold up something new and keep it still."]);
+    say([`You just wrote ${word} in braille! ${summary.spoken}`, "Hold up something new, or press Enter to ask for a word."]);
     return;
   }
 
@@ -532,17 +535,59 @@ async function start(newMode, intro = "") {
     return;
   }
   // Learn mode skips punctuation: there is nothing to type for it.
-  const usable = newMode === "learn" ? data.steps.filter((s) => s.pattern !== "000000") : data.steps;
+  let usable = newMode === "learn" ? data.steps.filter((s) => s.pattern !== "000000") : data.steps;
   if (!usable.length) {
     formError.textContent = newMode === "learn" ? "Type some letters or numbers first." : "Type some text first.";
     textInput.focus();
-    return;
+    return false;
+  }
+
+  // Wheel-only: keep the letters the wheel has, and say which ones we skip.
+  if (newMode === "learn" && wheelOnly) {
+    const skipped = [...new Set(usable.filter((s) => !fitsWheel(s)).map((s) => (/[0-9#]/.test(s.char) ? "numbers" : s.char.toUpperCase())))];
+    usable = usable.filter(fitsWheel);
+    if (!usable.length) {
+      nothingOnWheel(Boolean(intro));
+      return false;
+    }
+    if (skipped.length) intro = [intro, skippedNote(skipped)].filter(Boolean).join(" ");
   }
   lessonSteps = usable;
   steps = usable.map((s) => ({ ...s })); // copies: review steps get added to this list
   mistakes = {};
   openReader(newMode);
   goTo(0, false, intro);
+  return true;
+}
+
+// ---- wheel-only helpers
+// Numbers need the number sign, which isn't on the wheel, so they're skipped too.
+const fitsWheel = (step) => step.on_wheel && !step.is_number_sign && !/[0-9]/.test(step.char);
+
+const listWords = (items) => (items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`);
+
+// "V isn't on your wheel, so we'll skip it."
+function skippedNote(skipped) {
+  const letters = skipped.filter((x) => x !== "numbers");
+  const parts = [];
+  if (letters.length === 1) parts.push(`${letters[0]} isn't on your wheel, so we'll skip it.`);
+  if (letters.length > 1) parts.push(`${listWords(letters)} aren't on your wheel, so we'll skip them.`);
+  if (skipped.includes("numbers")) parts.push("Numbers aren't on your wheel yet, so we'll skip them.");
+  return parts.join(" ");
+}
+
+// Nothing in the request is on the wheel: say what is, and suggest words that work.
+function nothingOnWheel(fromCameraOrVoice) {
+  const letters = listWords(wheelLetters.toUpperCase().split(""));
+  const message = `None of those letters are on your wheel. Your wheel has ${letters}. Try a pen, an apple, or a ball.`;
+  if (fromCameraOrVoice) {
+    openCamera({ speak: false, waitForNewObject: true });
+    cameraStatus.textContent = message;
+  } else {
+    formError.textContent = message;
+    textInput.focus();
+  }
+  say([message]);
 }
 
 function backToInput() {
@@ -604,7 +649,9 @@ function cameraErrorMessage(error) {
   }
 }
 
-const HOLD_UP = "Hold up any object to the camera and keep it still. I'll teach you its name in braille.";
+const HOLD_UP =
+  "Hold up any object to the camera, and I'll teach you its name in braille. " +
+  "Or press Enter and tell me what you'd like to learn.";
 
 async function openCamera({ speak = true, welcome = false, waitForNewObject = false } = {}) {
   if (!visionEnabled) {
@@ -635,12 +682,12 @@ async function openCamera({ speak = true, welcome = false, waitForNewObject = fa
     reportToServer(`camera opened: ${cameraStream.getVideoTracks()[0]?.label} | ${navigator.userAgent}`);
     video.srcObject = cameraStream;
   }
-  $("shutter-button").focus();
+  $("talk-button").focus();
   startWatching({ armed: !waitForNewObject });
   lastReminder = Date.now(); // don't talk over the welcome or the lesson summary
   if (speak) {
-    cameraStatus.textContent = "Hold up any object and keep it still.";
-    say([welcome ? `Welcome to Braille Reader. ${HOLD_UP}` : HOLD_UP]);
+    cameraStatus.textContent = "Hold up an object, or press Enter and say what to learn.";
+    say([welcome ? `Welcome to Lumi. ${HOLD_UP}` : HOLD_UP]);
   }
 }
 
@@ -682,6 +729,7 @@ async function takePhoto({ auto = false } = {}) {
     });
     if (!r.ok) throw new Error();
     const result = await r.json();
+    if (talking || !cameraOpen()) return; // they started talking (or left) while we looked
     if (!result.found) {
       cameraStatus.textContent = "Hold up any object and keep it still.";
       nothingSeen(auto);
@@ -691,7 +739,7 @@ async function takePhoto({ auto = false } = {}) {
     const Word = capitalize(word);
     closeCamera();
     textInput.value = Word;
-    await start("learn", `${description} Write ${Word}.`);
+    if (!(await start("learn", `${description} Write ${Word}.`))) return;
     lessonWord = Word;
     feedbackEl.textContent = `From your photo: ${Word}`;
   } catch {
@@ -776,7 +824,195 @@ function stopWatching() {
   watchTimer = null;
 }
 
-$("shutter-button").addEventListener("click", takePhoto);
+// ---------------------------------------------------------------- ask (voice)
+//
+// Press Enter (remote or keyboard), hear a beep, and say what you want to learn:
+// "How do I write my name in braille?" -> "What's your name?" -> "Navi" -> lesson.
+// ElevenLabs turns speech into text; Gemini decides what to teach or what to ask next.
+
+const MIN_SPEECH_LEVEL = 0.01; // mic loudness (RMS) that always counts as talking...
+const NOISE_MULTIPLE = 3;      // ...or this many times the room's background noise, if louder
+const NOISE_SAMPLE_MS = 250;   // background noise is measured right after the beep
+const END_SILENCE_MS = 1200; // stop recording after this much quiet once they've spoken
+const NO_SPEECH_MS = 6000;   // give up if nothing is said for this long
+const MAX_RECORD_MS = 10000;
+const MAX_QUESTIONS = 3;     // follow-up questions in one conversation
+
+let micStream = null;
+let talking = false;   // in a conversation: automatic looks are ignored
+let listening = false;
+let stopRecording = false;
+
+// A short tone: high = "I'm listening", low = "got it".
+function beep(frequency, ms) {
+  return new Promise((resolve) => {
+    try {
+      const context = new AudioContext();
+      const tone = context.createOscillator();
+      const volume = context.createGain();
+      tone.frequency.value = frequency;
+      volume.gain.value = 0.15;
+      tone.connect(volume).connect(context.destination);
+      tone.start();
+      setTimeout(() => { tone.stop(); context.close(); resolve(); }, ms);
+    } catch {
+      resolve();
+    }
+  });
+}
+
+// Record until they stop talking. Resolves to an audio Blob, or null if nothing was said.
+async function record() {
+  micStream = micStream || (await navigator.mediaDevices.getUserMedia({ audio: true }));
+  const context = new AudioContext();
+  const analyser = context.createAnalyser();
+  analyser.fftSize = 1024;
+  context.createMediaStreamSource(micStream).connect(analyser);
+  const samples = new Float32Array(analyser.fftSize);
+  const type = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : "";
+  const recorder = new MediaRecorder(micStream, type ? { mimeType: type } : {});
+  const chunks = [];
+  recorder.ondataavailable = (e) => chunks.push(e.data);
+
+  await beep(880, 120);
+  listening = true;
+  cameraScreen.classList.add("listening");
+  stopRecording = false;
+  cameraStatus.textContent = "Listening...";
+  recorder.start(100);
+
+  return new Promise((resolve) => {
+    const startedAt = Date.now();
+    let spoke = false;
+    let lastSound = startedAt;
+    let loudest = 0;
+    let quietest = Infinity;
+    let speechLevel = MIN_SPEECH_LEVEL;
+    const timer = setInterval(() => {
+      analyser.getFloatTimeDomainData(samples);
+      const level = Math.sqrt(samples.reduce((sum, x) => sum + x * x, 0) / samples.length);
+      const now = Date.now();
+      loudest = Math.max(loudest, level);
+      if (now - startedAt < NOISE_SAMPLE_MS) {
+        quietest = Math.min(quietest, level);
+        speechLevel = Math.max(MIN_SPEECH_LEVEL, quietest * NOISE_MULTIPLE);
+      }
+      if (level > speechLevel) {
+        spoke = true;
+        lastSound = now;
+      }
+      const finished =
+        stopRecording ||
+        (spoke && now - lastSound > END_SILENCE_MS) ||
+        (!spoke && now - startedAt > NO_SPEECH_MS) ||
+        now - startedAt > MAX_RECORD_MS;
+      if (!finished) return;
+      clearInterval(timer);
+      recorder.onstop = () => {
+        context.close();
+        cameraScreen.classList.remove("listening");
+        if (!spoke) reportToServer(`no speech heard; loudest mic level ${loudest.toFixed(4)} (threshold ${speechLevel.toFixed(4)})`);
+        listening = false;
+        beep(440, 100);
+        resolve(spoke || stopRecording ? new Blob(chunks, { type: recorder.mimeType }) : null);
+      };
+      recorder.stop();
+    }, 50);
+  });
+}
+
+function resumeScanning() {
+  if (cameraOpen()) {
+    cameraStatus.textContent = "Hold up an object, or press Enter and say what to learn.";
+    startWatching({ armed: false });
+  }
+}
+
+// One back-and-forth: listen, then either start the lesson or ask a follow-up and listen again.
+async function talk() {
+  if (listening) {
+    stopRecording = true; // Enter again = "I'm done talking"
+    return;
+  }
+  if (talking) return;
+  if (!askEnabled) {
+    say(["Talking needs the ElevenLabs and Gemini keys."]);
+    return;
+  }
+  stopWatching();
+  playToken++;
+  stopSpeech();
+  talking = true;
+  try {
+    await conversation();
+  } finally {
+    talking = false;
+  }
+}
+
+async function conversation() {
+  let asked = "";
+  for (let turn = 0; turn <= MAX_QUESTIONS; turn++) {
+    let audio;
+    try {
+      audio = await record();
+    } catch (error) {
+      reportToServer(`microphone failed: ${error.name}: ${error.message}`);
+      cameraStatus.textContent = "Couldn't use the microphone. Allow it in Chrome and in Mac System Settings > Privacy & Security > Microphone.";
+      say(["I couldn't use the microphone."]);
+      return resumeScanning();
+    }
+    if (!cameraOpen()) return; // they left the screen while it was listening
+    if (!audio) {
+      say(["I didn't hear anything. Press Enter to try again."]);
+      return resumeScanning();
+    }
+
+    cameraStatus.textContent = "Thinking...";
+    let result;
+    try {
+      const r = await fetch(`/api/listen?asked=${encodeURIComponent(asked)}`, {
+        method: "POST",
+        headers: { "Content-Type": audio.type || "audio/webm" },
+        body: audio,
+      });
+      if (!r.ok) throw new Error(await r.text());
+      result = await r.json();
+    } catch (error) {
+      reportToServer(`listen failed: ${error.message}`);
+      say(["Sorry, I couldn't understand that. Press Enter to try again."]);
+      return resumeScanning();
+    }
+    if (!result.heard) {
+      say(["I didn't catch that. Press Enter to try again."]);
+      return resumeScanning();
+    }
+
+    if (result.learn) return startSpokenLesson(result.learn, result.say);
+
+    // A follow-up question ("What's your name?"): ask it, then listen for the answer.
+    asked = result.question;
+    cameraStatus.textContent = `You said: "${result.heard}". ${asked}`;
+    await say([asked]);
+    if (!cameraOpen()) return; // they left the screen meanwhile
+  }
+  say(["Let's try again. Press Enter and tell me what you'd like to learn."]);
+  resumeScanning();
+}
+
+// "Let's write your name, Navi. N, A, V, I." then the lesson.
+async function startSpokenLesson(text, intro) {
+  const letters = text.replace(/\s+/g, "");
+  const spelled = letters.length <= 12 ? ` ${letters.toUpperCase().split("").join(", ")}.` : "";
+  closeCamera();
+  textInput.value = text;
+  if (!(await start("learn", `${intro}${spelled}`))) return;
+  lessonWord = text;
+  feedbackEl.textContent = `You asked for: ${text}`;
+}
+
+$("talk-button").addEventListener("click", talk);
+$("shutter-button").addEventListener("click", () => takePhoto());
 $("camera-back-button").addEventListener("click", backToInput);
 
 // ---------------------------------------------------------------- input
@@ -817,7 +1053,7 @@ document.addEventListener("keydown", (e) => {
   if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
   if (cameraOpen()) {
     const onButton = e.target.closest?.("button");
-    if ((e.key === "Enter" || e.key === " ") && !onButton) { e.preventDefault(); takePhoto(); }
+    if ((e.key === "Enter" || e.key === " ") && !onButton) { e.preventDefault(); talk(); }
     if (e.key === "Escape") { e.preventDefault(); backToInput(); }
     return;
   }
@@ -880,7 +1116,7 @@ function handleRemote(msg) {
   }
   const isEnter = msg.type === "commit" || (msg.type === "button" && msg.action === "enter");
   if (cameraOpen()) {
-    if (isEnter) takePhoto(); // the remote's Enter can still take the photo by hand
+    if (isEnter) talk(); // the remote's Enter = "I want to say what to learn"
     return;
   }
   if (!readerOpen()) {
@@ -913,10 +1149,35 @@ fetch("/api/status")
   .then((s) => {
     elevenLabsEnabled = s.elevenlabs;
     visionEnabled = s.vision;
+    askEnabled = s.ask;
+    wheelOnly = s.wheel_only;
+    wheelLetters = s.wheel_letters || wheelLetters;
     // Hands-free: go straight to the camera. (Escape shows the text screen for sighted helpers.)
     if (visionEnabled && !readerOpen()) openCamera({ welcome: true });
+    else if (!readerOpen()) inputScreen.hidden = false;
   })
-  .catch(() => {});
+  .catch(() => { inputScreen.hidden = false; });
+
+// ---------------------------------------------------------------- high contrast
+// Plain black and white for low vision. Follows the system setting unless switched here.
+const contrastButton = $("contrast-toggle");
+
+function setContrast(high, remember) {
+  document.documentElement.dataset.contrast = high ? "high" : "normal";
+  contrastButton.setAttribute("aria-pressed", String(high));
+  if (remember) {
+    try { localStorage.setItem("lumi-contrast", high ? "high" : "normal"); } catch {}
+  }
+}
+
+let savedContrast = null;
+try { savedContrast = localStorage.getItem("lumi-contrast"); } catch {}
+setContrast(savedContrast ? savedContrast === "high" : matchMedia("(prefers-contrast: more)").matches, false);
+contrastButton.addEventListener("click", () => {
+  const high = document.documentElement.dataset.contrast !== "high";
+  setContrast(high, true);
+  say([high ? "High contrast on." : "High contrast off."]);
+});
 
 watchCameraPermission();
 connectWebSocket();

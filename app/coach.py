@@ -119,8 +119,18 @@ def check(target, expected, got):
 FIRST_DECADE = "abcdefghij"
 
 
-def hint(char, is_number_sign=False):
-    """A short memory hook for a character, or None."""
+def hint(char, is_number_sign=False, wheel_letters=None):
+    """A short memory hook for a character, or None.
+    With wheel_letters, only hooks whose base letter is on the wheel (so the learner can feel it)."""
+    text = _hint(char, is_number_sign)
+    if text and wheel_letters is not None and not is_number_sign:
+        base = text.split()[2].lower()  # "K is A plus ..." -> "a"
+        if base not in wheel_letters:
+            return None
+    return text
+
+
+def _hint(char, is_number_sign):
     if is_number_sign:
         return "The number sign is the whole right column, plus bottom left."
     c = char.lower()

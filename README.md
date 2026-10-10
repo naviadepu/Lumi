@@ -1,4 +1,4 @@
-# Braille Reader
+# Lumi
 
 A low-cost tool for adults learning grade 1 braille. A voice prompts "Type the letter A."
 and the learner presses the matching dots on a 6-button remote. If it's wrong, the voice
@@ -51,8 +51,8 @@ For Snap, get a free Gemini key at https://aistudio.google.com/apikey and set
 ```
 
 It starts the server and opens Chrome as a full-screen app that may use the camera and
-play sound without anyone clicking first. The camera turns on by itself and the voice says
-"Welcome to Braille Reader. Hold up any object to the camera and keep it still."
+microphone and play sound without anyone clicking first. The camera turns on by itself and the voice says
+"Welcome to Lumi. Hold up any object to the camera and keep it still."
 Nothing on screen needs to be found or clicked. Quit with Cmd+Q.
 
 **For development:**
@@ -67,7 +67,22 @@ there's no sound (browsers block audio until the page is touched).
 
 ## Modes
 
-**Snap** (opens by itself): learn a word from the real world. Hold an object up to the
+The app opens on a home screen with two hands-free options, and says so:
+*"Hold up any object to the camera, and I'll teach you its name in braille. Or press Enter
+and tell me what you'd like to learn."*
+
+**Ask** (press Enter on the remote, then talk): say what you want to learn. A high beep
+means it's listening; it stops by itself when you stop talking (low beep). ElevenLabs
+speech-to-text (`scribe_v2`) hears you and Gemini works out what to teach, asking a
+follow-up when it needs one:
+
+> "How do I write my name in braille?" -> "What is your name?" -> "Navi" ->
+> "Let's write your name, Navi. N, A, V, I. Type the letter N. Feel it on the wheel."
+
+"Teach me the word pencil" starts right away; anything off-topic gets steered back
+("What would you like to learn to write in braille?").
+
+**Snap** (automatic): learn a word from the real world. Hold an object up to the
 camera and keep it still for about a second; no button needed. The page watches for
 something new to move into view and settle, then asks Gemini what it is (if it's just a
 person or the room, it keeps watching). Gemini names
@@ -77,7 +92,8 @@ camera opens for the next thing.
 | Remote | Keyboard | Action |
 | --- | --- | --- |
 | (nothing) | (nothing) | Hold the object still: it looks automatically |
-| Enter | Enter or Space | Look right now |
+| Enter | Enter or Space | Talk (Ask). Press again to stop early |
+| | "Look now" button | Take the photo right away |
 | | Escape | Text screen (for sighted helpers: Learn, Read, Type) |
 
 For the other modes, type the letters to practise (default `abc`), then pick a mode.
@@ -191,6 +207,19 @@ How a lesson uses it ("I see a pen. Write pen."):
 Letters that aren't on the wheel flash on the LEDs instead, and the voice reads the dots:
 "It's not on the wheel. Press 1, top left. 3, bottom left. 6, bottom right."
 
+**Wheel-only mode (`WHEEL_ONLY=true`, the default).** The wheel only has 8 letters, so every
+lesson is kept to them:
+- Scan: Gemini is given the words the wheel can spell (`app/wheel.py`) and picks one that fits
+  the object (a pill bottle -> "pill", a charger -> "cable").
+- Ask: "Navi" -> "V isn't on your wheel, so we'll skip it", then N, A, I. Ideas ("what can I
+  learn?", "a fruit") only suggest words the wheel can spell; the server checks them.
+- Nothing fits ("mug"): "None of those letters are on your wheel. Your wheel has A, B, C, E, I,
+  L, N and P. Try a pen, an apple, or a ball."
+- Numbers are skipped (the number sign isn't on the wheel), and memory hints only mention
+  letters the learner can feel ("L is B plus bottom left").
+
+Set `WHEEL_ONLY=false` to teach any letter, with the LEDs standing in for letters off the wheel.
+
 **The 8 wheel letters: A B C E I L N P.** Out of about 100 everyday object names, these
 spell the most (pen, pencil, pill, pin, cap, can, cane, clip, apple, banana, ball, bell...).
 Gemini is told to pick a word spelled with them when one fits the object. Digits use the
@@ -245,6 +274,7 @@ browser (app/static)  --HTTP-->  FastAPI (app/main.py)  --HTTPS-->  ElevenLabs (
 | File | What it does |
 | --- | --- |
 | `app/braille.py` | Braille table and text -> list of cells (number sign, spaces) |
+| `app/assistant.py` | Ask: ElevenLabs speech-to-text + Gemini decide what to teach or ask next |
 | `app/vision.py` | Snap: Gemini reads a webcam photo and picks a word to learn |
 | `app/coach.py` | Mistake diagnosis (mirror, shifted, missing/extra dots) and memory hints |
 | `app/tts.py` | ElevenLabs Python SDK call + audio cache (memory and `audio_cache/` on disk) |
@@ -253,7 +283,7 @@ browser (app/static)  --HTTP-->  FastAPI (app/main.py)  --HTTPS-->  ElevenLabs (
 | `app/static/` | The page: `index.html`, `style.css`, `app.js` (Learn, Read, Type) |
 | `braille_remote/` | Arduino sketch for the remote |
 | `braille_interface.html` | Standalone Web Serial test page for the remote (no server needed) |
-| `tests/` | Braille lookup, coach, vision, and serial protocol tests |
+| `tests/` | Braille lookup, coach, vision, assistant, wheel and serial protocol tests |
 
 Settings in `.env`: `SPEAK_LETTER_PREFIX` / `SPEAK_NUMBER_PREFIX` change what Read mode speaks
 ("Letter A", "Number 5"); `ELEVENLABS_MODEL_ID` defaults to `eleven_multilingual_v2`

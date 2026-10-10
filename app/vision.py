@@ -14,6 +14,8 @@ from google import genai
 from google.genai import types
 from pydantic import BaseModel, Field
 
+from app.wheel import words_for
+
 log = logging.getLogger("vision")
 
 MAX_WORD_LETTERS = 10
@@ -21,14 +23,17 @@ MAX_WORD_LETTERS = 10
 def build_prompt(wheel_letters):
     """The braille wheel only has some letters, so ask for a word that fits it when one honestly does."""
     letters = ", ".join(wheel_letters)
+    words = ", ".join(words_for(wheel_letters))
     return f"""You help a blind adult learn braille using the things in their life.
 The camera watches all the time, so first decide: is someone holding up or showing a distinct
 object to the camera? Set "found" to false if the photo only shows a person, a face, hands with
 nothing in them, a room, or a blur. If found is false, leave description and word empty.
 Otherwise pick ONE short word for that object to learn in braille.
 The braille wheel can only show these letters: {letters}.
-1. If a plain, common name for the object is spelled only with those letters, use it.
-   For example a pill bottle -> "pill", a pencil -> "pencil", an apple -> "apple", a pen -> "pen".
+1. If a plain, common name for the object (or a word for a clear part of it) is spelled only
+   with those letters, use it. Words the wheel can spell include: {words}.
+   For example a pill bottle -> "pill", a pencil -> "pencil", an apple -> "apple", a pen -> "pen",
+   a cable or charger -> "cable", a bottle cap -> "cap".
 2. Otherwise use the plain name of the object anyway, for example "mug" or "keys".
 Never make up a word that doesn't fit the object just to match the letters.
 The word must be letters a-z only, at most {MAX_WORD_LETTERS} letters.
