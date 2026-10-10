@@ -16,7 +16,7 @@ def test_mirror_error_names_the_letter_typed():
     r = check("D", pattern_for("d"), pattern_for("f"))
     assert r["kind"] == "mirror"
     assert r["spoken"].startswith("Close! You typed F, the mirror image. Swap left and right.")
-    assert "D is: Top, left. Top, right. Middle, right." in r["spoken"]
+    assert "D is: 1, top left. 4, top right. 5, middle right." in r["spoken"]
 
 
 def test_one_row_too_low():
@@ -36,19 +36,19 @@ def test_nothing_pressed():
 def test_missing_dot():
     r = check("B", pattern_for("b"), pattern_for("a"))
     assert r["kind"] == "missing"
-    assert r["spoken"] == "Almost! Also press: Middle, left."
+    assert r["spoken"] == "Almost! Also press: 2, middle left."
 
 
 def test_extra_dot():
     r = check("A", pattern_for("a"), pattern_for("b"))
     assert r["kind"] == "extra"
-    assert r["text"] == "Almost! Leave out: middle left"
+    assert r["text"] == "Almost! Leave out: 2 middle left"
 
 
 def test_wrong_names_what_was_typed():
     r = check("C", pattern_for("c"), pattern_for("e"))  # c=1,4  e=1,5: mixed missing/extra
     assert r["kind"] == "wrong"
-    assert r["spoken"] == "Incorrect. You typed E. C is: Top, left. Top, right."
+    assert r["spoken"] == "Incorrect. You typed E. C is: 1, top left. 4, top right."
 
 
 def test_digits_named_as_digits():

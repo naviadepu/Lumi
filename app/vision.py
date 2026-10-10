@@ -18,15 +18,19 @@ log = logging.getLogger("vision")
 
 MAX_WORD_LETTERS = 10
 
-PROMPT = f"""You help a blind adult learn braille by labeling things in their life.
-Look at the photo and pick ONE word to learn in braille:
-- If there is printed text (a brand, a product name, a name on a badge, a sign), use the
-  most important word of it, for example "Tylenol", "Cinnamon" or "Maya".
-- If there is no readable text, use the plain name of the main object, for example "mug" or "keys".
-- The word must be letters a-z only, at most {MAX_WORD_LETTERS} letters.
-Also write a short, friendly description of what you see, under 12 words, that starts with
-"I see", for example "I see a bottle of Tylenol." Never identify a person from their face;
-only read printed text."""
+def build_prompt(wheel_letters):
+    """The braille wheel only has some letters, so ask for a word that fits it when one honestly does."""
+    letters = ", ".join(wheel_letters)
+    return f"""You help a blind adult learn braille using the things in their life.
+Look at the photo and pick ONE short word for the main object to learn in braille.
+The braille wheel can only show these letters: {letters}.
+1. If a plain, common name for the object is spelled only with those letters, use it.
+   For example a pill bottle -> "pill", a pencil -> "pencil", an apple -> "apple", a pen -> "pen".
+2. Otherwise use the plain name of the object anyway, for example "mug" or "keys".
+Never make up a word that doesn't fit the object just to match the letters.
+The word must be letters a-z only, at most {MAX_WORD_LETTERS} letters.
+Also write a short, friendly description, under 12 words, starting with "I see",
+for example "I see a pen." Never identify a person from their face."""
 
 
 class SnapResult(BaseModel):
@@ -47,8 +51,9 @@ class VisionUnavailable(Exception):
 
 
 class GeminiVision:
-    def __init__(self, api_key, model):
+    def __init__(self, api_key, model, wheel_letters="abceilnp"):
         self.model = model
+        self.prompt = build_prompt(wheel_letters)
         self.client = genai.Client(api_key=api_key) if api_key else None
 
     @property
@@ -64,7 +69,7 @@ class GeminiVision:
             try:
                 response = await self.client.aio.models.generate_content(
                     model=self.model,
-                    contents=[types.Part.from_bytes(data=image_bytes, mime_type=mime_type), PROMPT],
+                    contents=[types.Part.from_bytes(data=image_bytes, mime_type=mime_type), self.prompt],
                     config=types.GenerateContentConfig(
                         response_mime_type="application/json",
                         response_schema=SnapResult,

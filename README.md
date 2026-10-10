@@ -2,10 +2,10 @@
 
 A low-cost tool for adults learning grade 1 braille. A voice prompts "Type the letter A."
 and the learner presses the matching dots on a 6-button remote. If it's wrong, the voice
-says which buttons to press ("Incorrect. Top, left. Bottom, left. Middle, right."). If it's
+says which buttons to press ("Incorrect. C is: 1, top left. 4, top right."). If it's
 right: "Good job! Next is: the letter B."
 
-The buttons are named by position on the remote instead of by dot number:
+The buttons are called by number and position ("1, top left"):
 
 ```
 TOP LEFT     (1)   TOP RIGHT    (4)
@@ -16,7 +16,8 @@ BOTTOM LEFT  (3)   BOTTOM RIGHT (6)
 
 **Snap it, learn it:** hold anything up to the webcam (a medicine bottle, a name badge,
 a spice jar) and press Enter on the remote. Gemini reads it, the device says "I see a
-bottle of Tylenol. Let's write Tylenol in braille", and coaches you through the word.
+pen. Write pen.", turns each letter under your finger on the braille wheel, and coaches
+you through the word.
 Labeling your own things is one of the first everyday uses of braille after vision loss.
 
 Speech uses ElevenLabs, with the browser's built-in voice as a fallback. Everything
@@ -53,8 +54,9 @@ Open http://127.0.0.1:8000
 ## Modes
 
 **Snap**: learn a word from the real world. Press the remote's Enter on the start screen
-(or the Snap button) to open the camera, hold something up, press Enter again. The lesson
-is the word Gemini read; when you finish, the camera opens for the next thing.
+(or the Snap button) to open the camera, hold something up, press Enter again. Gemini names
+it, preferring a word that fits the wheel (a pill bottle -> "pill"); when you finish, the
+camera opens for the next thing.
 
 | Remote | Keyboard | Action |
 | --- | --- | --- |
@@ -82,9 +84,9 @@ number sign (dots 3-4-5-6), then the digit.
 | --- | --- |
 | Typed the mirror image (F for D, I for E, J for H) | "Close! You typed F, the mirror image. Swap left and right." |
 | Right shape, wrong row | "Close! Right shape, but one row too low." |
-| Left out a dot | "Almost! Also press: Bottom, left." |
-| Added a dot | "Almost! Leave out: Middle, right." |
-| Anything else | "Incorrect. You typed E. C is: Top, left. Top, right." |
+| Left out a dot | "Almost! Also press: 3, bottom left." |
+| Added a dot | "Almost! Leave out: 5, middle right." |
+| Anything else | "Incorrect. You typed E. C is: 1, top left. 4, top right." |
 
 New letters come with a hint from braille's structure ("K is A plus bottom left",
 "U is A plus both bottom dots", "4 uses the same dots as D"). Letters you miss come back
@@ -152,45 +154,66 @@ pytest
   until someone has interacted with the page. (Or start Chrome with
   `--autoplay-policy=no-user-gesture-required`.)
 - Check the corner says "Arduino: connected" (and that the IDE / test page is closed).
-- Allow camera access once in Chrome, and have props ready: a medicine bottle, a spice jar,
-  a name badge. Short words make the best demos.
+- Allow camera access once in Chrome, and have props whose names fit the wheel:
+  pen, pencil, pill bottle, clip, apple, banana, ball, can.
 - Run it once beforehand with the ElevenLabs key set. Every phrase is cached in `audio_cache/`,
   so the demo plays instantly and still works if the Wi-Fi drops.
 
-## The remote
+## The remote and the braille wheel
 
-Hardware (under $30): Arduino Uno, half-size breadboard, 7 tactile buttons, jumper wires.
-No resistors: the pins use the Uno's internal pull-ups.
+Hardware (about $25-30 with an Uno clone): Arduino Uno, 7 tactile buttons, 6 LEDs + 220 ohm
+resistors, a 28BYJ-48 stepper with ULN2003 driver, a hall sensor + magnet (or microswitch),
+and a disc with raised braille letters (hot-glue dots, puff paint or 3D print; bigger
+"jumbo" dots are easier for beginners).
+
+How a lesson uses it ("I see a pen. Write pen."):
+1. **Feel**: the wheel turns the target letter under the finger. "Type the letter P. Feel it on the wheel."
+2. **Type**: press the dot buttons (the LEDs light up live), then Enter.
+3. **Coach**: right -> next letter; wrong -> "Almost! Also press: 6, bottom right." The wheel stays put.
+
+Letters that aren't on the wheel flash on the LEDs instead, and the voice reads the dots:
+"It's not on the wheel. Press 1, top left. 3, bottom left. 6, bottom right."
+
+**The 8 wheel letters: A B C E I L N P.** Out of about 100 everyday object names, these
+spell the most (pen, pencil, pill, pin, cap, can, cane, clip, apple, banana, ball, bell...).
+Gemini is told to pick a word spelled with them when one fits the object. Digits use the
+same slots (1 = a, 2 = b, 3 = c, 5 = e, 9 = i). To change the disc, change `WHEEL_LETTERS`
+in both `.env` and the sketch.
 
 ```
-Dot 1 (top left)    -> D2      Dot 4 (top right)    -> D5
-Dot 2 (middle left) -> D3      Dot 5 (middle right) -> D6
+Dot 1 (top left)    -> D2      Dot 4 (top right)    -> D5      Enter -> D8
+Dot 2 (middle left) -> D3      Dot 5 (middle right) -> D6      other leg of every button -> GND
 Dot 3 (bottom left) -> D4      Dot 6 (bottom right) -> D7
-Enter               -> D8      other leg of every button -> GND
+
+LEDs dots 1-6       -> D9, D10, D11, D12, D13, A0  (each via 220 ohm to GND)
+ULN2003 IN1-IN4     -> A1, A2, A3, A4              (driver powered from 5V)
+Home sensor         -> A5 (LOW at home; set HOME_SENSOR_PIN = -1 if you have none)
 ```
 
 1. Open `braille_remote/braille_remote.ino` in the Arduino IDE (it must stay in the
-   `braille_remote` folder), pick Arduino Uno and its port, and Upload.
-2. **Close the Serial Monitor and quit the IDE.** Only one program can use the port at a time.
-   The same goes for `braille_interface.html` (the standalone Web Serial test page):
-   disconnect it before starting this app.
-3. Start `python -m app.main`. It finds the board within a few seconds and the corner of the
-   page says "Arduino: connected". If it picks the wrong port, set `ARDUINO_PORT` in `.env`
-   (Windows: `COM3`; Mac: `ls /dev/cu.*`, e.g. `/dev/cu.usbmodem1101`).
+   `braille_remote` folder), pick Arduino Uno and its port, and Upload. No extra libraries.
+2. Calibrate: at power-on the wheel finds home, then goes to slot 0 (A). Adjust
+   `HOME_OFFSET_STEPS` until A sits exactly under the finger, and `WHEEL_DIRECTION` if it
+   turns the wrong way. Letters go round the disc in `WHEEL_LETTERS` order, evenly spaced.
+3. **Close the Serial Monitor and quit the IDE.** Only one program can use the port at a time.
+   The same goes for `braille_interface.html` (the standalone Web Serial test page).
+4. Start `python -m app.main`. The corner of the page says "Arduino: connected" within a
+   few seconds. If it picks the wrong port, set `ARDUINO_PORT` in `.env`
+   (Windows: `COM3`; Mac: `ls /dev/cu.*`).
 
-Serial protocol (9600 baud, one line each). Both the short names and the long names work:
+Serial protocol (9600 baud, one line each). Both short and long names work:
 
-| Line | Meaning |
-| --- | --- |
-| `READY` | sketch booted |
-| `CELL <mask>` / `BRAILLE_CELL_BITMASK <mask>` | current dots changed (bit 0 = dot 1 ... bit 5 = dot 6) |
-| `MODE <cap> <num>` / `INPUT_MODE_FLAGS <cap> <num>` | capital / number mode, 0 or 1 |
-| `CHAR <mask> <c>` / `COMMITTED_CHARACTER <mask> <c>` | Enter typed character c (may be a space) |
-| `UNKNOWN <mask>` / `NO_MATCHING_CHARACTER_FOR_BITMASK <mask>` | Enter on a pattern with no meaning |
+| Direction | Line | Meaning |
+| --- | --- | --- |
+| remote -> laptop | `READY` | sketch booted |
+| remote -> laptop | `CELL <mask>` / `BRAILLE_CELL_BITMASK <mask>` | current dots changed (bit 0 = dot 1 ... bit 5 = dot 6) |
+| remote -> laptop | `MODE <cap> <num>` / `INPUT_MODE_FLAGS <cap> <num>` | capital / number mode, 0 or 1 |
+| remote -> laptop | `CHAR <mask> <c>` / `COMMITTED_CHARACTER <mask> <c>` | Enter typed character c (may be a space) |
+| remote -> laptop | `UNKNOWN <mask>` / `NO_MATCHING_CHARACTER_FOR_BITMASK <mask>` | Enter on a pattern with no meaning |
+| laptop -> remote | `SHOW <c> <dots>` | new target, e.g. `SHOW p 111100`: wheel turns to the slot with that pattern, or the LEDs flash it |
 
 Enter on the capital or number sign prints no character, only `CELL 0` and `MODE`; the
-server reports that to the page as a commit of the sign. The app also sends
-`SHOW A 100000` lines (the current character) which the remote ignores.
+server reports that to the page as a commit of the sign.
 
 ## How it fits together
 

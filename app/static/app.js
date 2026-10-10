@@ -5,7 +5,8 @@
 //          Wrong -> we say which buttons to press. Right -> next letter.
 //   Read:  show and speak each character of the text, one at a time.
 //   Snap:  hold something up to the webcam; Gemini reads it and Learn mode
-//          teaches that word ("I see a bottle of Tylenol. Let's write Tylenol.").
+//          teaches that word ("I see a pen. Write pen."). Each letter is on the
+//          rotating braille wheel to feel first; letters not on it flash on the LEDs.
 //   Type:  free typing with the remote, like braille_interface.html: live cell,
 //          preview of what Enter will type, capital/number badges, typed text.
 
@@ -47,7 +48,9 @@ let numberMode = false;
 const ROW = { 1: "top", 2: "middle", 3: "bottom", 4: "top", 5: "middle", 6: "bottom" };
 const COLUMN = { 1: "left", 2: "left", 3: "left", 4: "right", 5: "right", 6: "right" };
 const capitalize = (s) => s[0].toUpperCase() + s.slice(1);
-const dotName = (n) => capitalize(`${ROW[n]} ${COLUMN[n]}`);
+// Buttons are called by number and position: "1, top left" (spoken), "1 top left" (shown).
+const dotName = (n) => `${n}, ${ROW[n]} ${COLUMN[n]}`;
+const dotText = (n) => `${n} ${ROW[n]} ${COLUMN[n]}`;
 
 // Keyboard stand-ins for the remote: 1-6, or the standard braille keys F D S / J K L.
 const DOT_KEYS = { 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, f: 1, d: 2, s: 3, j: 4, k: 5, l: 6 };
@@ -215,20 +218,31 @@ function nameOf(step) {
 // How the coach refers to the target: "D", "4" or "the number sign"
 const targetOf = (step) => (step.is_number_sign ? "the number sign" : step.char.toUpperCase());
 
-// "Next is: the letter K. Hint: K is A plus bottom left."  /  "Let's try D again."
-function introFor(step) {
-  if (step.review) return `Let's try ${nameOf(step)} again.`;
-  return `Next is: ${nameOf(step)}.` + (step.hint ? ` Hint: ${step.hint}` : "");
+// Spoken: "1, top left. 3, bottom left." Left column first, top to bottom.
+function buttonsToPress(pattern) {
+  return raisedDots(pattern).map((n) => `${dotName(n)}.`).join(" ");
 }
 
-const promptFor = (step) =>
-  step.review ? introFor(step) : `Type ${nameOf(step)}.` + (step.hint ? ` Hint: ${step.hint}` : "");
+// Letters on the wheel are felt first. Others flash on the LEDs and we read the dots out.
+function findIt(step) {
+  if (step.on_wheel) return "Feel it on the wheel.";
+  return `It's not on the wheel. Press ${buttonsToPress(step.pattern)}`;
+}
 
-const hintText = (step) => (step.hint && !step.review ? "Hint: " + step.hint : "");
+// The structure hint only for wheel letters; for the others we already read out the dots.
+const hintFor = (step) => (step.hint && step.on_wheel && !step.review ? step.hint : "");
+const hintText = (step) => (hintFor(step) ? "Hint: " + hintFor(step) : "");
 
-// Spoken: "Top, left. Bottom, left. Middle, right." Left column first, top to bottom.
-function buttonsToPress(pattern) {
-  return raisedDots(pattern).map((n) => `${capitalize(ROW[n])}, ${COLUMN[n]}.`).join(" ");
+// "Next is: the letter P. Feel it on the wheel."  /  "Let's try D again. Feel it on the wheel."
+function introFor(step) {
+  const first = step.review ? `Let's try ${nameOf(step)} again.` : `Next is: ${nameOf(step)}.`;
+  return [first, findIt(step), hintFor(step) && `Hint: ${hintFor(step)}`].filter(Boolean).join(" ");
+}
+
+// "Type the letter P. Feel it on the wheel. Hint: P is F plus bottom left."
+function promptFor(step) {
+  if (step.review) return introFor(step);
+  return [`Type ${nameOf(step)}.`, findIt(step), hintFor(step) && `Hint: ${hintFor(step)}`].filter(Boolean).join(" ");
 }
 
 async function coachCheck(step, answer) {
@@ -245,7 +259,7 @@ async function coachCheck(step, answer) {
   return {
     correct,
     spoken: correct ? "Good job!" : `Incorrect. ${buttonsToPress(step.pattern)}`,
-    text: correct ? "Good job!" : "Incorrect. Press: " + raisedDots(step.pattern).map(dotName).join(", "),
+    text: correct ? "Good job!" : "Incorrect. Press: " + raisedDots(step.pattern).map(dotText).join(", "),
   };
 }
 
@@ -273,6 +287,7 @@ async function checkAnswer(answer = enteredPattern()) {
     step.missed = true;
     feedbackEl.textContent = result.text;
     say([result.spoken]);
+    sendToArduino(step); // wheel stays on the right letter; off-wheel letters flash on the LEDs again
     return;
   }
 
@@ -377,7 +392,7 @@ function showTypeCommit(result, mask) {
   } else if (result.kind === "number") {
     say(["Number sign"]);
   } else {
-    feedbackEl.textContent = "No braille character for " + raisedDots(patternFromMask(mask)).map(dotName).join(", ");
+    feedbackEl.textContent = "No braille character for " + raisedDots(patternFromMask(mask)).map(dotText).join(", ");
     say(["No match"]);
   }
   renderType();
@@ -582,7 +597,7 @@ async function takePhoto() {
     const Word = capitalize(word);
     closeCamera();
     textInput.value = Word;
-    await start("learn", `${description} Let's write ${Word} in braille.`);
+    await start("learn", `${description} Write ${Word}.`);
     lessonWord = Word;
     feedbackEl.textContent = `From your photo: ${Word}`;
   } catch {

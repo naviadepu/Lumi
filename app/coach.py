@@ -45,13 +45,13 @@ def shift_down(pattern):
 
 
 def spoken_dots(dots):
-    """[1, 3] -> "Top, left. Bottom, left." (the pitch's format)"""
-    return " ".join(f"{ROW[n].capitalize()}, {COLUMN[n]}." for n in dots)
+    """[1, 3] -> "1, top left. 3, bottom left." (button number, then where it is)"""
+    return " ".join(f"{n}, {ROW[n]} {COLUMN[n]}." for n in dots)
 
 
 def text_dots(dots):
-    """[1, 3] -> "top left, bottom left" """
-    return ", ".join(f"{ROW[n]} {COLUMN[n]}" for n in dots)
+    """[1, 3] -> "1 top left, 3 bottom left" """
+    return ", ".join(f"{n} {ROW[n]} {COLUMN[n]}" for n in dots)
 
 
 def name_pattern(pattern, digits=False):

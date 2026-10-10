@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 
 from app.arduino import ArduinoLink, RemoteParser
 from app import coach
-from app.braille import text_to_steps
+from app.braille import pattern_for, text_to_steps
 from app.tts import ElevenLabsTTS, TTSUnavailable
 from app.vision import GeminiVision, VisionUnavailable
 
@@ -42,9 +42,15 @@ tts = ElevenLabsTTS(
     model_id=os.getenv("ELEVENLABS_MODEL_ID", "eleven_multilingual_v2").strip(),
 )
 
+# Letters on the rotating braille wheel (must match WHEEL_LETTERS in braille_remote.ino).
+WHEEL_LETTERS = "".join(sorted(set(os.getenv("WHEEL_LETTERS", "abceilnp").strip().lower())))
+# The wheel shows dot patterns, so a digit is "on the wheel" if its letter is (1 = a, 5 = e, ...).
+WHEEL_PATTERNS = {pattern_for(c) for c in WHEEL_LETTERS} - {"000000"}
+
 vision = GeminiVision(
     api_key=os.getenv("GEMINI_API_KEY", "").strip(),
     model=os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite").strip(),
+    wheel_letters=WHEEL_LETTERS,
 )
 
 
@@ -130,6 +136,7 @@ def steps(req: StepsRequest):
     steps = text_to_steps(req.text, LETTER_PREFIX, NUMBER_PREFIX)
     for step in steps:
         step["hint"] = coach.hint(step["char"], step["is_number_sign"])
+        step["on_wheel"] = step["pattern"] in WHEEL_PATTERNS
     return {"steps": steps}
 
 
