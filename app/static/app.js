@@ -26,6 +26,7 @@ const statusEl = $("arduino-status");
 const cameraScreen = $("camera-screen");
 const video = $("camera");
 const cameraStatus = $("camera-status");
+const cameraPermissionEl = $("camera-permission");
 const targetDots = [...cellEl.querySelectorAll(".dot")];
 const inputDots = [...document.querySelectorAll(".dot-button")];
 
@@ -540,30 +541,78 @@ let snapping = false;
 
 const cameraOpen = () => !cameraScreen.hidden;
 
+// Corner status: "Camera: allowed / blocked / not allowed yet", kept up to date.
+let cameraPermission = "unknown";
+const CAMERA_STATES = { granted: "Camera: allowed", denied: "Camera: blocked", prompt: "Camera: not allowed yet" };
+
+async function watchCameraPermission() {
+  try {
+    const status = await navigator.permissions.query({ name: "camera" });
+    const show = () => {
+      cameraPermission = status.state;
+      cameraPermissionEl.textContent = CAMERA_STATES[status.state] || "";
+    };
+    show();
+    status.onchange = show;
+  } catch {} // some browsers can't report it; the error messages below still explain
+}
+
+// Plain-language fix for each way opening the camera can fail.
+function cameraErrorMessage(error) {
+  switch (error.name) {
+    case "NotAllowedError":
+    case "SecurityError":
+      return "The camera is blocked. In Chrome, click the camera icon at the right end of the address bar and choose Allow, then click Snap again. Still blocked? On your Mac open System Settings > Privacy & Security > Camera, turn on Google Chrome, and restart Chrome.";
+    case "NotFoundError":
+    case "OverconstrainedError":
+      return "No camera found. Check a webcam is connected and switched on.";
+    case "NotReadableError":
+    case "AbortError":
+      return "The camera is busy. Quit other apps using it (Zoom, FaceTime, Photo Booth) and click Snap again.";
+    default:
+      return `Couldn't open the camera (${error.name || error}). Try Chrome at http://127.0.0.1:8000.`;
+  }
+}
+
 async function openCamera({ speak = true } = {}) {
   if (!visionEnabled) {
     formError.textContent = "Snap needs a Gemini API key in .env (GEMINI_API_KEY).";
     say(["Snap needs a Gemini API key."]);
     return;
   }
+  inputScreen.hidden = true;
+  readerScreen.hidden = true;
+  cameraScreen.hidden = false;
   if (!cameraStream) {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      showCameraError("This browser can't use the camera here. Open http://127.0.0.1:8000 in Chrome.");
+      return;
+    }
+    if (cameraPermission !== "granted") {
+      cameraStatus.textContent = "Snap needs your camera. Click Allow when the browser asks.";
+      say(["Snap needs your camera. Please click Allow."]);
+    }
     try {
       cameraStream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } });
-    } catch {
-      formError.textContent = "Couldn't open the camera. Allow camera access and try again.";
-      say(["I couldn't open the camera."]);
+    } catch (error) {
+      showCameraError(cameraErrorMessage(error));
       return;
     }
     video.srcObject = cameraStream;
   }
-  inputScreen.hidden = true;
-  readerScreen.hidden = true;
-  cameraScreen.hidden = false;
   $("shutter-button").focus();
   if (speak) {
     cameraStatus.textContent = "Hold something up to the camera, then press Enter.";
     say(["Hold something up to the camera, then press Enter."]);
   }
+}
+
+function showCameraError(message) {
+  closeCamera();
+  inputScreen.hidden = false;
+  formError.textContent = message;
+  say(["I couldn't open the camera. The fix is on the screen."]);
+  $("snap-button").focus();
 }
 
 function closeCamera() {
@@ -745,5 +794,6 @@ fetch("/api/status")
   .then((s) => { elevenLabsEnabled = s.elevenlabs; visionEnabled = s.vision; })
   .catch(() => {});
 
+watchCameraPermission();
 connectWebSocket();
 textInput.focus();

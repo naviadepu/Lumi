@@ -51,8 +51,12 @@ button:active {
   position: fixed;
   top: 12px;
   right: 16px;
-  margin: 0;
   font-size: 1.1rem;
+  text-align: right;
+}
+
+.corner-status p {
+  margin: 0;
 }
 
 /* ---- Input screen ---- */
