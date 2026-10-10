@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Braille Remote</title>
+<style>
+  :root {
+    --bg: #f6f5f1; --card: #ffffff; --text: #1f1e1c; --muted: #6b6a65; --line: #dddbd3;
+    --dot-off: #e9e7e0; --dot-on: #534ab7; --accent: #534ab7; --accent-soft: #eeedfe;
+    --ok: #0f6e56; --ok-soft: #e1f5ee; --warn: #993c1d; --warn-soft: #faece7;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1a1a19; --card: #242422; --text: #efeee9; --muted: #a3a29b; --line: #3a3936;
+      --dot-off: #34332f; --dot-on: #8b83e6; --accent: #8b83e6; --accent-soft: #2c2950;
+      --ok: #5dcaa5; --ok-soft: #10302a; --warn: #f0997b; --warn-soft: #3a2018;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 24px 16px 48px; }
+  header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+  h1 { font-size: 22px; font-weight: 600; margin: 0; flex: 1; }
+  .pill { font-size: 13px; padding: 4px 10px; border-radius: 999px; background: var(--dot-off); color: var(--muted); }
+  .pill.on { background: var(--ok-soft); color: var(--ok); }
+  button { font: inherit; font-size: 14px; padding: 8px 14px; border-radius: 8px; cursor: pointer;
+           border: 1px solid var(--line); background: var(--card); color: var(--text); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:disabled { opacity: .45; cursor: default; }
+  .grid { display: grid; grid-template-columns: auto 1fr; gap: 16px; }
+  @media (max-width: 560px) { .grid { grid-template-columns: 1fr; } }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px; }
+  .cell { display: grid; grid-template-columns: repeat(2, 64px); gap: 14px 22px; justify-content: center; }
+  .dot { width: 64px; height: 64px; border-radius: 50%; background: var(--dot-off); border: 2px solid transparent;
+         display: grid; place-items: center; font-size: 15px; color: var(--muted); user-select: none;
+         transition: background .08s, transform .08s; }
+  .dot.on { background: var(--dot-on); color: #fff; transform: scale(1.04); }
+  .demo .dot { cursor: pointer; border-color: var(--line); }
+  #enterBtn { width: 100%; margin-top: 18px; }
+  .label { font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+  .preview { font-size: 44px; font-weight: 600; min-height: 66px; line-height: 66px; }
+  .preview.small { font-size: 20px; }
+  .modes { display: flex; gap: 8px; margin-top: 8px; }
+  .badge { font-size: 13px; padding: 3px 10px; border-radius: 6px; background: var(--dot-off); color: var(--muted); }
+  .badge.on { background: var(--accent-soft); color: var(--accent); }
+  .output { margin-top: 16px; }
+  #text { font-size: 28px; min-height: 120px; white-space: pre-wrap; word-break: break-word;
+          font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  #text::after { content: "▏"; color: var(--accent); animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .row { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+  .flash { margin-top: 10px; font-size: 14px; min-height: 21px; color: var(--warn); }
+  details { margin-top: 16px; color: var(--muted); font-size: 13px; }
+  #log { font-family: ui-monospace, Menlo, Consolas, monospace; white-space: pre; max-height: 160px; overflow: auto; }
+  .hint { font-size: 13px; color: var(--muted); margin-top: 12px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Braille Remote</h1>
+    <span id="connectionStatusPill" class="pill">Not connected</span>
+    <button id="connectButton" class="primary">Connect Arduino</button>
+  </header>
+
+  <div class="grid">
+    <section class="card demo" id="brailleCellCard">
+      <div class="cell" id="brailleCellDotGrid"></div>
+      <button id="enterButton">Enter</button>
+      <div class="hint" id="modeHintText">Demo mode: click dots, then Enter.</div>
+    </section>
+
+    <section class="card">
+      <div class="label">Current cell will type</div>
+      <div class="preview" id="decodedCharacterPreview">space</div>
+      <div class="modes">
+        <span class="badge" id="capitalizeModeBadge">Capital</span>
+        <span class="badge" id="numberModeBadge">Number</span>
+      </div>
+      <div class="flash" id="flashMessage"></div>
+    </section>
+  </div>
+
+  <section class="card output">
+    <div class="label">Typed text</div>
+    <div id="typedTextOutput"></div>
+    <div class="row">
+      <button id="backspaceButton">Backspace</button>
+      <button id="spaceButton">Space</button>
+      <button id="clearButton">Clear</button>
+      <button id="copyButton">Copy</button>
+    </div>
+    <details>
+      <summary>Serial log</summary>
+      <div id="serialLog"></div>
+    </details>
+  </section>
+</main>
+
+<script>
+// Demo scope: only letters a-j are decoded, matching the Arduino sketch's lookup table.
+const LETTERS_A_THROUGH_J = 'abcdefghij';
+const BITMASK_FOR_EACH_LETTER_A_THROUGH_J = [1, 3, 9, 25, 17, 11, 27, 19, 10, 26];
+
+// Extra punctuation bitmasks that don't collide with any a-j letter bitmask above.
+const CHARACTER_FOR_BITMASK = { 0: ' ', 2: ',', 6: ';', 18: ':', 50: '.', 22: '!', 38: '?', 4: "'", 36: '-' };
+BITMASK_FOR_EACH_LETTER_A_THROUGH_J.forEach((bitmask, letterIndex) => {
+  CHARACTER_FOR_BITMASK[bitmask] = LETTERS_A_THROUGH_J[letterIndex];
+});
+
+const BITMASK_MEANING_CAPITALIZE_SIGN = 32;  // dot 6 alone
+const BITMASK_MEANING_NUMBER_SIGN = 60;      // dots 3-4-5-6
+
+// The 2x3 braille cell matrix: row 0 is dots [1,4], row 1 is [2,5], row 2 is [3,6].
+// This only controls the on-screen layout order — the decoding logic below works on bitmasks.
+const BRAILLE_CELL_DOT_NUMBER_MATRIX = [[1, 4], [2, 5], [3, 6]];
+const DOT_NUMBERS_IN_DISPLAY_ORDER = [1, 4, 2, 5, 3, 6];
+
+const appState = {
+  currentBrailleCellBitmask: 0,
+  capitalizeNextLetterFlag: false,
+  numberModeIsActiveFlag: false,
+  typedText: '',
+  isConnectedToBoard: false
+};
+
+let serialPort = null;
+let serialReader = null;
+let serialReadLoopPromise = null;
+
+const byId = elementId => document.getElementById(elementId);
+const dotGridContainer = byId('brailleCellDotGrid');
+const dotElementForDotNumber = {};
+
+DOT_NUMBERS_IN_DISPLAY_ORDER.forEach(dotNumber => {
+  const dotElement = document.createElement('div');
+  dotElement.className = 'dot';
+  dotElement.textContent = dotNumber;
+  dotElement.setAttribute('role', 'button');
+  dotElement.setAttribute('aria-label', 'Dot ' + dotNumber);
+  dotElement.addEventListener('click', () => {
+    if (!appState.isConnectedToBoard) {
+      appState.currentBrailleCellBitmask ^= 1 << (dotNumber - 1);
+      renderCurrentState();
+    }
+  });
+  dotElementForDotNumber[dotNumber] = dotElement;
+  dotGridContainer.appendChild(dotElement);
+});
+
+// Mirrors the Arduino sketch's commitCurrentBrailleCellAsACharacter(), without side effects,
+// so the on-screen preview always shows what Enter would currently produce.
+function decodeBrailleCellBitmask(bitmask, capitalizeNextLetterFlag, numberModeIsActiveFlag) {
+  if (bitmask === BITMASK_MEANING_CAPITALIZE_SIGN) {
+    return { kind: 'capitalizeSign', capitalizeNextLetterFlag: true, numberModeIsActiveFlag };
+  }
+  if (bitmask === BITMASK_MEANING_NUMBER_SIGN) {
+    return { kind: 'numberSign', capitalizeNextLetterFlag, numberModeIsActiveFlag: true };
+  }
+
+  let decodedCharacter = CHARACTER_FOR_BITMASK[bitmask];
+  if (decodedCharacter === undefined) {
+    return { kind: 'noMatch', capitalizeNextLetterFlag, numberModeIsActiveFlag };
+  }
+  if (decodedCharacter === ' ') {
+    return { kind: 'character', character: ' ', capitalizeNextLetterFlag: false, numberModeIsActiveFlag: false };
+  }
+
+  let characterBecameADigit = false;
+  if (numberModeIsActiveFlag) {
+    const letterOffsetFromLetterA = LETTERS_A_THROUGH_J.indexOf(decodedCharacter);
+    if (letterOffsetFromLetterA >= 0) {
+      decodedCharacter = letterOffsetFromLetterA === 9 ? '0' : String(letterOffsetFromLetterA + 1);
+      characterBecameADigit = true;
+    } else {
+      numberModeIsActiveFlag = false;
+    }
+  }
+  if (!characterBecameADigit && capitalizeNextLetterFlag) {
+    decodedCharacter = decodedCharacter.toUpperCase();
+  }
+  return { kind: 'character', character: decodedCharacter, capitalizeNextLetterFlag: false, numberModeIsActiveFlag };
+}
+
+function listPressedDotNumbers(bitmask) {
+  const pressedDotNumbers = [];
+  for (let dotIndex = 0; dotIndex < 6; dotIndex++) {
+    if (bitmask & (1 << dotIndex)) pressedDotNumbers.push(dotIndex + 1);
+  }
+  return pressedDotNumbers.join('-') || 'none';
+}
+
+function renderCurrentState() {
+  DOT_NUMBERS_IN_DISPLAY_ORDER.forEach(dotNumber => {
+    const isPressed = !!(appState.currentBrailleCellBitmask & (1 << (dotNumber - 1)));
+    dotElementForDotNumber[dotNumber].classList.toggle('on', isPressed);
+  });
+
+  const decoded = decodeBrailleCellBitmask(
+    appState.currentBrailleCellBitmask,
+    appState.capitalizeNextLetterFlag,
+    appState.numberModeIsActiveFlag
+  );
+  const previewElement = byId('decodedCharacterPreview');
+  const showsSmallText = decoded.kind !== 'character' || decoded.character === ' ';
+  previewElement.classList.toggle('small', showsSmallText);
+  previewElement.textContent =
+    decoded.kind === 'capitalizeSign' ? 'Capital sign' :
+    decoded.kind === 'numberSign' ? 'Number sign' :
+    decoded.kind === 'noMatch' ? 'No match' :
+    decoded.character === ' ' ? 'space' : decoded.character;
+
+  byId('capitalizeModeBadge').classList.toggle('on', appState.capitalizeNextLetterFlag);
+  byId('numberModeBadge').classList.toggle('on', appState.numberModeIsActiveFlag);
+  byId('typedTextOutput').textContent = appState.typedText;
+}
+
+function showFlashMessage(message) {
+  const flashElement = byId('flashMessage');
+  flashElement.textContent = message;
+  clearTimeout(showFlashMessage.pendingTimeoutId);
+  showFlashMessage.pendingTimeoutId = setTimeout(() => { flashElement.textContent = ''; }, 1800);
+}
+
+function commitCurrentBrailleCellAsACharacterLocally() {
+  const decoded = decodeBrailleCellBitmask(
+    appState.currentBrailleCellBitmask,
+    appState.capitalizeNextLetterFlag,
+    appState.numberModeIsActiveFlag
+  );
+  if (decoded.kind === 'noMatch') {
+    showFlashMessage('No braille character for dots ' + listPressedDotNumbers(appState.currentBrailleCellBitmask));
+  } else {
+    if (decoded.kind === 'character') appState.typedText += decoded.character;
+    appState.capitalizeNextLetterFlag = decoded.capitalizeNextLetterFlag;
+    appState.numberModeIsActiveFlag = decoded.numberModeIsActiveFlag;
+  }
+  appState.currentBrailleCellBitmask = 0;
+  renderCurrentState();
+}
+
+function appendLineToSerialLog(line) {
+  const logElement = byId('serialLog');
+  logElement.textContent = (logElement.textContent + line + '\n').split('\n').slice(-60).join('\n');
+  logElement.scrollTop = logElement.scrollHeight;
+}
+
+// Parses one line of the Arduino sketch's serial protocol and updates appState accordingly.
+// This is the function that "reads" board input once a full line has been assembled by the
+// read loop below — see connectToArduinoOverWebSerial() for where lines come from.
+// Older versions of the sketch used short message names. Translate them so either sketch works.
+const LEGACY_SERIAL_MESSAGE_PREFIX_TO_CURRENT_PREFIX = {
+  'CELL ': 'BRAILLE_CELL_BITMASK ',
+  'MODE ': 'INPUT_MODE_FLAGS ',
+  'CHAR ': 'COMMITTED_CHARACTER ',
+  'UNKNOWN ': 'NO_MATCHING_CHARACTER_FOR_BITMASK '
+};
+
+function translateLegacySerialLineToCurrentProtocol(line) {
+  for (const [legacyPrefix, currentPrefix] of Object.entries(LEGACY_SERIAL_MESSAGE_PREFIX_TO_CURRENT_PREFIX)) {
+    if (line.startsWith(legacyPrefix)) return currentPrefix + line.slice(legacyPrefix.length);
+  }
+  return line;
+}
+
+function handleIncomingSerialLine(rawLine) {
+  appendLineToSerialLog(rawLine);
+  const line = translateLegacySerialLineToCurrentProtocol(rawLine);
+
+  if (line === 'READY') {
+    appState.currentBrailleCellBitmask = 0;
+    showFlashMessage('');
+  } else if (line.startsWith('BRAILLE_CELL_BITMASK ')) {
+    appState.currentBrailleCellBitmask = parseInt(line.slice('BRAILLE_CELL_BITMASK '.length), 10) || 0;
+  } else if (line.startsWith('INPUT_MODE_FLAGS ')) {
+    const [, capitalizeFlagText, numberModeFlagText] = line.split(' ');
+    appState.capitalizeNextLetterFlag = capitalizeFlagText === '1';
+    appState.numberModeIsActiveFlag = numberModeFlagText === '1';
+  } else if (line.startsWith('COMMITTED_CHARACTER ')) {
+    const remainder = line.slice('COMMITTED_CHARACTER '.length);
+    const firstSpaceIndex = remainder.indexOf(' ');
+    if (firstSpaceIndex >= 0) {
+      const committedCharacter = remainder.slice(firstSpaceIndex + 1, firstSpaceIndex + 2) || ' ';
+      appState.typedText += committedCharacter;
+    }
+  } else if (line.startsWith('NO_MATCHING_CHARACTER_FOR_BITMASK ')) {
+    const bitmask = parseInt(line.slice('NO_MATCHING_CHARACTER_FOR_BITMASK '.length), 10) || 0;
+    showFlashMessage('No braille character for dots ' + listPressedDotNumbers(bitmask));
+  }
+
+  renderCurrentState();
+}
+
+function setConnectionUiState(isConnected) {
+  appState.isConnectedToBoard = isConnected;
+  byId('connectionStatusPill').textContent = isConnected ? 'Connected' : 'Not connected';
+  byId('connectionStatusPill').classList.toggle('on', isConnected);
+  byId('connectButton').textContent = isConnected ? 'Disconnect' : 'Connect Arduino';
+  byId('brailleCellCard').classList.toggle('demo', !isConnected);
+  byId('enterButton').style.display = isConnected ? 'none' : '';
+  byId('modeHintText').textContent = isConnected
+    ? 'Live: press the buttons on the remote.'
+    : 'Demo mode: click dots, then Enter.';
+  if (!isConnected) {
+    appState.currentBrailleCellBitmask = 0;
+    appState.capitalizeNextLetterFlag = false;
+    appState.numberModeIsActiveFlag = false;
+  }
+  renderCurrentState();
+}
+
+async function connectToArduinoOverWebSerial() {
+  if (!('serial' in navigator)) {
+    showFlashMessage('This browser has no Web Serial. Open the page in Chrome or Edge on a computer.');
+    return;
+  }
+  try {
+    serialPort = await navigator.serial.requestPort();
+    await serialPort.open({ baudRate: 9600 });
+  } catch (error) {
+    showFlashMessage('Could not open the port: ' + error.message);
+    serialPort = null;
+    return;
+  }
+
+  setConnectionUiState(true);
+
+  const textDecoderStream = new TextDecoderStream();
+  serialReadLoopPromise = serialPort.readable.pipeTo(textDecoderStream.writable).catch(() => {});
+  serialReader = textDecoderStream.readable.getReader();
+  let incomingTextBuffer = '';
+
+  try {
+    while (true) {
+      const { value, done } = await serialReader.read();
+      if (done) break;
+      incomingTextBuffer += value;
+
+      let newlineIndex;
+      while ((newlineIndex = incomingTextBuffer.indexOf('\n')) >= 0) {
+        const line = incomingTextBuffer.slice(0, newlineIndex).replace(/\r$/, '');
+        incomingTextBuffer = incomingTextBuffer.slice(newlineIndex + 1);
+        if (line.length) handleIncomingSerialLine(line);
+      }
+    }
+  } catch (error) {
+    showFlashMessage('Connection lost: ' + error.message);
+  } finally {
+    try { serialReader.releaseLock(); } catch (_) {}
+    await serialReadLoopPromise;
+    try { await serialPort.close(); } catch (_) {}
+    serialPort = null;
+    serialReader = null;
+    setConnectionUiState(false);
+  }
+}
+
+async function disconnectFromArduino() {
+  if (serialReader) {
+    try { await serialReader.cancel(); } catch (_) {}
+  }
+}
+
+byId('connectButton').addEventListener('click', () => {
+  appState.isConnectedToBoard ? disconnectFromArduino() : connectToArduinoOverWebSerial();
+});
+byId('enterButton').addEventListener('click', commitCurrentBrailleCellAsACharacterLocally);
+byId('backspaceButton').addEventListener('click', () => {
+  appState.typedText = appState.typedText.slice(0, -1);
+  renderCurrentState();
+});
+byId('spaceButton').addEventListener('click', () => {
+  appState.typedText += ' ';
+  renderCurrentState();
+});
+byId('clearButton').addEventListener('click', () => {
+  appState.typedText = '';
+  renderCurrentState();
+});
+byId('copyButton').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(appState.typedText);
+    showFlashMessage('Copied');
+  } catch (_) {
+    showFlashMessage('Copy failed');
+  }
+});
+document.addEventListener('keydown', event => {
+  if (event.key === 'Backspace') {
+    event.preventDefault();
+    appState.typedText = appState.typedText.slice(0, -1);
+    renderCurrentState();
+  }
+});
+
+renderCurrentState();
+</script>
+</body>
+</html>
