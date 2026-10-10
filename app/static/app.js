@@ -97,7 +97,10 @@ function playAudio(url) {
     finishCurrent = () => resolve(true);
     audio.onended = () => resolve(true);
     audio.onerror = () => resolve(false);
-    audio.play().catch(() => resolve(false));
+    audio.play().catch((error) => {
+      if (error.name === "NotAllowedError") audioBlocked = true;
+      resolve(false);
+    });
   });
 }
 
@@ -107,14 +110,32 @@ function browserSay(text) {
     if (!("speechSynthesis" in window)) return resolve();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.rate = 0.9;
-    utterance.onend = utterance.onerror = () => resolve();
+    utterance.onend = () => resolve();
+    utterance.onerror = (e) => {
+      if (e.error === "not-allowed") audioBlocked = true;
+      resolve();
+    };
     finishCurrent = resolve;
     speechSynthesis.speak(utterance);
   });
 }
 
+// Browsers block sound until someone touches the page (start.sh turns that off).
+// If it was blocked, replay the last thing said on the first key press or click.
+let audioBlocked = false;
+let lastSpoken = [];
+function replayIfBlocked() {
+  if (audioBlocked) {
+    audioBlocked = false;
+    say(lastSpoken);
+  }
+}
+document.addEventListener("pointerdown", replayIfBlocked);
+document.addEventListener("keydown", replayIfBlocked);
+
 // Speak a list of phrases in order, e.g. ["Space", "Letter B"].
 async function say(parts) {
+  lastSpoken = parts;
   const token = ++playToken;
   stopSpeech();
   for (const text of parts) {
@@ -303,9 +324,9 @@ async function checkAnswer(answer = enteredPattern()) {
     feedbackEl.textContent = summary.text;
     const word = lessonWord;
     lessonWord = "";
-    openCamera({ speak: false });
-    cameraStatus.textContent = `You wrote ${word} in braille! Hold up something new, then press Enter.`;
-    say([`You just wrote ${word} in braille! ${summary.spoken}`, "Hold up something new, then press Enter."]);
+    openCamera({ speak: false, waitForNewObject: true });
+    cameraStatus.textContent = `You wrote ${word} in braille! Hold up something new.`;
+    say([`You just wrote ${word} in braille! ${summary.spoken}`, "Hold up something new and keep it still."]);
     return;
   }
 
@@ -558,6 +579,15 @@ async function watchCameraPermission() {
 }
 
 // Plain-language fix for each way opening the camera can fail.
+// Send a line to the server's terminal, so problems on this screen can be diagnosed there.
+function reportToServer(message) {
+  fetch("/api/log", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message: message.slice(0, 1000) }),
+  }).catch(() => {});
+}
+
 function cameraErrorMessage(error) {
   switch (error.name) {
     case "NotAllowedError":
@@ -574,7 +604,9 @@ function cameraErrorMessage(error) {
   }
 }
 
-async function openCamera({ speak = true } = {}) {
+const HOLD_UP = "Hold up any object to the camera and keep it still. I'll teach you its name in braille.";
+
+async function openCamera({ speak = true, welcome = false, waitForNewObject = false } = {}) {
   if (!visionEnabled) {
     formError.textContent = "Snap needs a Gemini API key in .env (GEMINI_API_KEY).";
     say(["Snap needs a Gemini API key."]);
@@ -585,6 +617,7 @@ async function openCamera({ speak = true } = {}) {
   cameraScreen.hidden = false;
   if (!cameraStream) {
     if (!navigator.mediaDevices?.getUserMedia) {
+      reportToServer(`camera unavailable in this browser: ${navigator.userAgent}`);
       showCameraError("This browser can't use the camera here. Open http://127.0.0.1:8000 in Chrome.");
       return;
     }
@@ -595,15 +628,19 @@ async function openCamera({ speak = true } = {}) {
     try {
       cameraStream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } });
     } catch (error) {
+      reportToServer(`camera failed: ${error.name}: ${error.message} | permission=${cameraPermission} | ${navigator.userAgent}`);
       showCameraError(cameraErrorMessage(error));
       return;
     }
+    reportToServer(`camera opened: ${cameraStream.getVideoTracks()[0]?.label} | ${navigator.userAgent}`);
     video.srcObject = cameraStream;
   }
   $("shutter-button").focus();
+  startWatching({ armed: !waitForNewObject });
+  lastReminder = Date.now(); // don't talk over the welcome or the lesson summary
   if (speak) {
-    cameraStatus.textContent = "Hold something up to the camera, then press Enter.";
-    say(["Hold something up to the camera, then press Enter."]);
+    cameraStatus.textContent = "Hold up any object and keep it still.";
+    say([welcome ? `Welcome to Braille Reader. ${HOLD_UP}` : HOLD_UP]);
   }
 }
 
@@ -616,6 +653,7 @@ function showCameraError(message) {
 }
 
 function closeCamera() {
+  stopWatching();
   if (cameraStream) cameraStream.getTracks().forEach((track) => track.stop());
   cameraStream = null;
   video.srcObject = null;
@@ -623,11 +661,12 @@ function closeCamera() {
 }
 
 // Grab a frame, ask Gemini what it is, and turn the word into a lesson.
-async function takePhoto() {
+// Manual (Enter / button) or automatic (something held steady in view).
+async function takePhoto({ auto = false } = {}) {
   if (snapping || !video.videoWidth) return;
   snapping = true;
   cameraStatus.textContent = "Looking...";
-  say(["Looking."]);
+  if (!auto) say(["Looking."]);
 
   const scale = Math.min(1, 1024 / video.videoWidth);
   const canvas = document.createElement("canvas");
@@ -642,7 +681,13 @@ async function takePhoto() {
       body: JSON.stringify({ image: canvas.toDataURL("image/jpeg", 0.85) }),
     });
     if (!r.ok) throw new Error();
-    const { description, word } = await r.json();
+    const result = await r.json();
+    if (!result.found) {
+      cameraStatus.textContent = "Hold up any object and keep it still.";
+      nothingSeen(auto);
+      return;
+    }
+    const { description, word } = result;
     const Word = capitalize(word);
     closeCamera();
     textInput.value = Word;
@@ -650,11 +695,85 @@ async function takePhoto() {
     lessonWord = Word;
     feedbackEl.textContent = `From your photo: ${Word}`;
   } catch {
-    cameraStatus.textContent = "I couldn't read that. Hold it closer and press Enter again.";
-    say(["I couldn't read that. Hold it closer and press Enter again."]);
+    cameraStatus.textContent = "I couldn't read that. Hold it closer.";
+    if (!auto) say(["I couldn't read that. Hold it closer and keep it still."]);
   } finally {
     snapping = false;
   }
+}
+
+// Nothing to learn in the picture. Say so when asked; when watching, only remind now and then.
+let lastReminder = 0;
+function nothingSeen(auto) {
+  if (!auto || Date.now() - lastReminder > 20000) {
+    lastReminder = Date.now();
+    say(["I don't see an object yet. Hold it close to the camera and keep it still."]);
+  }
+}
+
+// ---- hands-free: look automatically when something is held steady in front of the camera.
+// Compares tiny grayscale frames: movement "arms" it, then ~1 s of stillness takes the photo.
+const MOTION = 10;       // average pixel change (0-255) that counts as movement
+const STILL = 4;         // below this the picture is steady
+const STEADY_MS = 900;   // how long it must stay steady
+const MIN_GAP_MS = 3000; // at most one look every 3 s (keeps Gemini calls low)
+
+const tiny = document.createElement("canvas");
+tiny.width = 48;
+tiny.height = 36;
+const tinyContext = tiny.getContext("2d", { willReadFrequently: true });
+let watchTimer = null;
+let previousFrame = null;
+let armed = false;
+let steadySince = 0;
+let lastLook = 0;
+
+function frameChange() {
+  tinyContext.drawImage(video, 0, 0, tiny.width, tiny.height);
+  const pixels = tinyContext.getImageData(0, 0, tiny.width, tiny.height).data;
+  const frame = new Uint8Array(tiny.width * tiny.height);
+  let total = 0;
+  for (let i = 0; i < frame.length; i++) {
+    frame[i] = (pixels[i * 4] + pixels[i * 4 + 1] + pixels[i * 4 + 2]) / 3;
+    if (previousFrame) total += Math.abs(frame[i] - previousFrame[i]);
+  }
+  const hadPrevious = previousFrame !== null;
+  previousFrame = frame;
+  return hadPrevious ? total / frame.length : 0;
+}
+
+function watchTick() {
+  if (!cameraOpen() || snapping || !video.videoWidth) return;
+  const change = frameChange();
+  const now = Date.now();
+  if (change > MOTION) {
+    armed = true; // something moved: look once it settles
+    steadySince = 0;
+  } else if (change < STILL) {
+    steadySince = steadySince || now;
+    if (armed && now - steadySince >= STEADY_MS && now - lastLook >= MIN_GAP_MS) {
+      armed = false; // after looking, wait for new movement before looking again
+      lastLook = now;
+      takePhoto({ auto: true });
+    }
+  } else {
+    steadySince = 0;
+  }
+}
+
+// armed: look as soon as the picture is steady (on first open the object may already be there).
+// After a lesson, wait for movement so the same object doesn't start the same lesson again.
+function startWatching({ armed: armNow }) {
+  stopWatching();
+  previousFrame = null;
+  armed = armNow;
+  steadySince = 0;
+  watchTimer = setInterval(watchTick, 200);
+}
+
+function stopWatching() {
+  clearInterval(watchTimer);
+  watchTimer = null;
 }
 
 $("shutter-button").addEventListener("click", takePhoto);
@@ -761,7 +880,7 @@ function handleRemote(msg) {
   }
   const isEnter = msg.type === "commit" || (msg.type === "button" && msg.action === "enter");
   if (cameraOpen()) {
-    if (isEnter) takePhoto(); // the remote's Enter is the shutter
+    if (isEnter) takePhoto(); // the remote's Enter can still take the photo by hand
     return;
   }
   if (!readerOpen()) {
@@ -791,7 +910,12 @@ function connectWebSocket() {
 
 fetch("/api/status")
   .then((r) => r.json())
-  .then((s) => { elevenLabsEnabled = s.elevenlabs; visionEnabled = s.vision; })
+  .then((s) => {
+    elevenLabsEnabled = s.elevenlabs;
+    visionEnabled = s.vision;
+    // Hands-free: go straight to the camera. (Escape shows the text screen for sighted helpers.)
+    if (visionEnabled && !readerOpen()) openCamera({ welcome: true });
+  })
   .catch(() => {});
 
 watchCameraPermission();

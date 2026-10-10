@@ -30,16 +30,22 @@ def test_no_key_means_disabled():
 
 
 def test_word_is_cleaned_to_short_lowercase_letters():
-    v = fake_gemini('{"description": "I see a bottle of Tylenol.", "word": "Tylenol®"}')
-    assert run(v.snap(b"img", "image/jpeg")) == {"description": "I see a bottle of Tylenol.", "word": "tylenol"}
+    v = fake_gemini('{"found": true, "description": "I see a bottle of Tylenol.", "word": "Tylenol®"}')
+    assert run(v.snap(b"img", "image/jpeg")) == {"found": True, "description": "I see a bottle of Tylenol.", "word": "tylenol"}
 
-    v = fake_gemini('{"description": "I see a sign.", "word": "Supercalifragilistic"}')
+    v = fake_gemini('{"found": true, "description": "I see a sign.", "word": "Supercalifragilistic"}')
     assert run(v.snap(b"img", "image/jpeg"))["word"] == "supercalif"
 
 
+def test_nothing_shown_is_not_found():
+    v = fake_gemini('{"found": false, "description": "", "word": ""}')
+    assert run(v.snap(b"img", "image/jpeg")) == {"found": False}
+    # found, but no usable letters: also nothing to teach
+    v = fake_gemini('{"found": true, "description": "I see a 7.", "word": "7"}')
+    assert run(v.snap(b"img", "image/jpeg")) == {"found": False}
+
+
 def test_unusable_reply_is_unavailable():
-    with pytest.raises(VisionUnavailable):
-        run(fake_gemini('{"description": "I see a 7.", "word": "7"}').snap(b"img", "image/jpeg"))
     with pytest.raises(VisionUnavailable):
         run(fake_gemini("not json").snap(b"img", "image/jpeg"))
     with pytest.raises(VisionUnavailable):
@@ -53,7 +59,7 @@ def test_retries_once_after_a_failure():
         calls.append(1)
         if len(calls) == 1:
             raise RuntimeError("403 PERMISSION_DENIED")
-        return SimpleNamespace(text='{"description": "I see a mug.", "word": "mug"}')
+        return SimpleNamespace(text='{"found": true, "description": "I see a mug.", "word": "mug"}')
 
     vision = GeminiVision(api_key="", model="m")
     vision.client = SimpleNamespace(aio=SimpleNamespace(models=SimpleNamespace(generate_content=flaky)))

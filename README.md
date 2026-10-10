@@ -44,24 +44,41 @@ For Snap, get a free Gemini key at https://aistudio.google.com/apikey and set
 
 ## Run
 
+**Hands-free (for the learner and the demo), macOS:**
+
+```bash
+./start.sh
+```
+
+It starts the server and opens Chrome as a full-screen app that may use the camera and
+play sound without anyone clicking first. The camera turns on by itself and the voice says
+"Welcome to Braille Reader. Hold up any object to the camera and keep it still."
+Nothing on screen needs to be found or clicked. Quit with Cmd+Q.
+
+**For development:**
+
 ```bash
 source .venv/bin/activate
 python -m app.main
 ```
 
-Open http://127.0.0.1:8000
+Open http://127.0.0.1:8000 in Chrome. In a normal browser tab, click once anywhere if
+there's no sound (browsers block audio until the page is touched).
 
 ## Modes
 
-**Snap**: learn a word from the real world. Press the remote's Enter on the start screen
-(or the Snap button) to open the camera, hold something up, press Enter again. Gemini names
+**Snap** (opens by itself): learn a word from the real world. Hold an object up to the
+camera and keep it still for about a second; no button needed. The page watches for
+something new to move into view and settle, then asks Gemini what it is (if it's just a
+person or the room, it keeps watching). Gemini names
 it, preferring a word that fits the wheel (a pill bottle -> "pill"); when you finish, the
 camera opens for the next thing.
 
 | Remote | Keyboard | Action |
 | --- | --- | --- |
-| Enter | Enter or Space | Take the photo |
-| | Escape | Back to the start screen |
+| (nothing) | (nothing) | Hold the object still: it looks automatically |
+| Enter | Enter or Space | Look right now |
+| | Escape | Text screen (for sighted helpers: Learn, Read, Type) |
 
 For the other modes, type the letters to practise (default `abc`), then pick a mode.
 

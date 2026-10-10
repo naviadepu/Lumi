@@ -178,6 +178,17 @@ def status():
     return {"arduino": arduino.connected, "elevenlabs": tts.enabled, "vision": vision.enabled}
 
 
+class ClientLog(BaseModel):
+    message: str = Field(max_length=1000)
+
+
+@app.post("/api/log")
+def client_log(entry: ClientLog):
+    """The page reports problems here (e.g. why the camera didn't open) so they show in this terminal."""
+    log.warning("Page: %s", entry.message)
+    return {"ok": True}
+
+
 class SnapRequest(BaseModel):
     image: str = Field(max_length=8_000_000)  # data URL from the webcam: "data:image/jpeg;base64,..."
 

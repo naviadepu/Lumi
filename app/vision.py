@@ -22,7 +22,10 @@ def build_prompt(wheel_letters):
     """The braille wheel only has some letters, so ask for a word that fits it when one honestly does."""
     letters = ", ".join(wheel_letters)
     return f"""You help a blind adult learn braille using the things in their life.
-Look at the photo and pick ONE short word for the main object to learn in braille.
+The camera watches all the time, so first decide: is someone holding up or showing a distinct
+object to the camera? Set "found" to false if the photo only shows a person, a face, hands with
+nothing in them, a room, or a blur. If found is false, leave description and word empty.
+Otherwise pick ONE short word for that object to learn in braille.
 The braille wheel can only show these letters: {letters}.
 1. If a plain, common name for the object is spelled only with those letters, use it.
    For example a pill bottle -> "pill", a pencil -> "pencil", an apple -> "apple", a pen -> "pen".
@@ -34,6 +37,7 @@ for example "I see a pen." Never identify a person from their face."""
 
 
 class SnapResult(BaseModel):
+    found: bool = Field(description="True only if a distinct object is being shown to the camera")
     description: str = Field(description='Under 12 words, starting with "I see"')
     word: str = Field(description=f"One word, letters a-z only, at most {MAX_WORD_LETTERS} letters")
 
@@ -61,7 +65,7 @@ class GeminiVision:
         return self.client is not None
 
     async def snap(self, image_bytes, mime_type):
-        """Photo -> {"description": "I see ...", "word": "tylenol"}"""
+        """Photo -> {"found": True, "description": "I see a pen.", "word": "pen"} or {"found": False}"""
         if not self.enabled:
             raise VisionUnavailable("GEMINI_API_KEY not set")
         # One retry: a flaky call shouldn't end the demo with "I couldn't read that".
@@ -85,7 +89,7 @@ class GeminiVision:
 
         # Trust but verify: keep it to a short a-z word the lesson can teach.
         word = re.sub(r"[^a-z]", "", result.word.lower())[:MAX_WORD_LETTERS]
-        if not word:
-            raise VisionUnavailable(f"Gemini returned no usable word: {result.word!r}")
+        if not result.found or not word:
+            return {"found": False}
         log.info("Snap: %s -> %s", result.description, word)
-        return {"description": result.description.strip(), "word": word}
+        return {"found": True, "description": result.description.strip(), "word": word}
