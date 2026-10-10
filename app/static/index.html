@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Braille Reader</title>
+  <!-- Atkinson Hyperlegible was designed for low-vision readers. Falls back to system sans-serif offline. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <p id="arduino-status" class="corner-status" role="status">Arduino: not connected</p>
+
+  <!-- Screen 1: enter text -->
+  <main id="input-screen">
+    <h1>Braille Reader</h1>
+    <form id="text-form">
+      <label for="text-input">Letters, numbers or text</label>
+      <textarea id="text-input" rows="3" autocomplete="off" spellcheck="false">abc</textarea>
+      <p id="form-error" class="form-error" role="alert"></p>
+      <div class="start-buttons">
+        <button type="submit" id="learn-button" data-mode="learn" aria-label="Learn: type each letter in braille">Learn</button>
+        <button type="submit" id="read-button" data-mode="read" aria-label="Read: show each character in braille">Read</button>
+      </div>
+      <p class="hint">Ctrl + Enter or the remote's Enter button starts Learn</p>
+    </form>
+  </main>
+
+  <!-- Screen 2: one character at a time (Learn and Read modes) -->
+  <main id="reader-screen" hidden>
+    <div class="stage">
+      <button type="button" id="prev-button" class="side-button" aria-label="Previous (Left arrow)">
+        <span aria-hidden="true">&#9664;</span>
+      </button>
+
+      <div class="center">
+        <div id="char" class="char" role="img" aria-label=""></div>
+
+        <div class="grids">
+          <figure class="grid-block">
+            <div id="cell" class="cell" role="img" aria-label="">
+              <!-- Grid order is row by row: 1 4 / 2 5 / 3 6 -->
+              <span class="dot" data-dot="1"></span><span class="dot" data-dot="4"></span>
+              <span class="dot" data-dot="2"></span><span class="dot" data-dot="5"></span>
+              <span class="dot" data-dot="3"></span><span class="dot" data-dot="6"></span>
+            </div>
+            <figcaption class="learn-only">Target</figcaption>
+          </figure>
+
+          <figure class="grid-block learn-only">
+            <div id="input-cell" class="cell" role="group" aria-label="Your input">
+              <button type="button" class="dot dot-button" data-dot="1" aria-pressed="false" aria-label="Top left (key 1 or F)"></button>
+              <button type="button" class="dot dot-button" data-dot="4" aria-pressed="false" aria-label="Top right (key 4 or J)"></button>
+              <button type="button" class="dot dot-button" data-dot="2" aria-pressed="false" aria-label="Middle left (key 2 or D)"></button>
+              <button type="button" class="dot dot-button" data-dot="5" aria-pressed="false" aria-label="Middle right (key 5 or K)"></button>
+              <button type="button" class="dot dot-button" data-dot="3" aria-pressed="false" aria-label="Bottom left (key 3 or S)"></button>
+              <button type="button" class="dot dot-button" data-dot="6" aria-pressed="false" aria-label="Bottom right (key 6 or L)"></button>
+            </div>
+            <figcaption>You</figcaption>
+          </figure>
+        </div>
+
+        <p id="position" class="position"></p>
+        <p id="feedback" class="feedback learn-only"></p>
+      </div>
+
+      <button type="button" id="next-button" class="side-button" aria-label="Next (Right arrow)">
+        <span aria-hidden="true">&#9654;</span>
+      </button>
+    </div>
+
+    <div class="controls">
+      <button type="button" id="check-button" class="learn-only" aria-label="Check my answer (Enter)">Check (Enter)</button>
+      <button type="button" id="repeat-button" aria-label="Repeat (R)">Repeat (R)</button>
+      <button type="button" id="back-button" aria-label="Back to text input (Escape)">New text (Esc)</button>
+    </div>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
