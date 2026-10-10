@@ -9,8 +9,10 @@
   --lime: #CFE48A;
   --mist: #EEF4EC;
   --sky: #B7D3DC;
-  --text: #FFFFFF;
-  --text-soft: rgba(255, 255, 255, 0.82);
+  --text: rgba(255, 255, 255, 0.94);
+  --text-soft: rgba(255, 255, 255, 0.74);
+  /* The reference's shading: soft white type that glows into the gradient, with a faint shadow for legibility */
+  --type-glow: 0 0 22px rgba(255, 255, 255, 0.25), 0 1px 3px rgba(20, 24, 20, 0.45), 0 2px 18px rgba(20, 24, 20, 0.4);
 
   /* Liquid glass: frosted, a thin bright rim, a soft shadow below, light pooling on the bottom edge */
   --glass-fill: linear-gradient(180deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.08) 100%);
@@ -22,7 +24,9 @@
   --radius: 14px;
 
   --dot-size: min(5vh, 9vw);
-  font-family: -apple-system, "SF Pro Display", "SF Pro Text", Inter, "Helvetica Neue", Arial, sans-serif;
+  --display: Manrope, -apple-system, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+  --sans: -apple-system, "SF Pro Display", "SF Pro Text", Inter, "Helvetica Neue", Arial, sans-serif;
+  font-family: var(--display);
   font-weight: 400;
   -webkit-font-smoothing: antialiased;
   color-scheme: dark;
@@ -43,9 +47,9 @@ body {
   background-color: var(--forest);
 }
 
-/* The background: the green swirl, flowing. Two copies (one mirrored) slowly turn and drift
-   at different speeds; where they overlap the bands of light move through each other like
-   liquid. A dark green wash on top keeps white text readable, deepest at the bottom. */
+/* The background: the blush-and-green photo, exactly as given, slowly drifting and breathing.
+   A neutral dark wash (not green, so the pink stays pink) keeps white text readable,
+   a little deeper toward the bottom where the buttons are. */
 .backdrop {
   position: fixed;
   inset: 0;
@@ -55,36 +59,24 @@ body {
 
 .flow {
   position: absolute;
-  inset: -30%;
-  background: url("/static/background.jpg") center / cover;
+  inset: -12%;
+  background: url("/static/gradient.jpg") center / cover;
+  filter: blur(14px) saturate(1.15);   /* hides the photo's dust specks when it's enlarged */
   will-change: transform;
-}
-
-.flow-a { animation: flow-a 18s ease-in-out infinite alternate; }
-
-.flow-b {
-  opacity: 0.6;
-  mix-blend-mode: soft-light;
-  animation: flow-b 23s ease-in-out infinite alternate;
+  animation: drift 24s ease-in-out infinite alternate;
 }
 
 .backdrop::after {
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg, rgba(10, 40, 24, 0.30) 0%, rgba(10, 40, 24, 0.42) 45%, rgba(8, 32, 19, 0.70) 100%);
+  background: linear-gradient(180deg, rgba(30, 36, 30, 0.14) 0%, rgba(30, 36, 30, 0.22) 50%, rgba(24, 28, 24, 0.42) 100%);
 }
 
-@keyframes flow-a {
-  0%   { transform: rotate(-14deg) scale(1.05) translate(-8%, -4%); }
-  50%  { transform: rotate(4deg) scale(1.25) translate(3%, 5%); }
-  100% { transform: rotate(16deg) scale(1.1) translate(8%, -3%); }
-}
-
-@keyframes flow-b {
-  0%   { transform: scaleX(-1) rotate(18deg) scale(1.2) translate(8%, 5%); }
-  50%  { transform: scaleX(-1) rotate(-2deg) scale(1.05) translate(-2%, -6%); }
-  100% { transform: scaleX(-1) rotate(-16deg) scale(1.25) translate(-8%, 4%); }
+@keyframes drift {
+  0%   { transform: translate(-4%, -3%) scale(1.02) rotate(-1.5deg); }
+  50%  { transform: translate(3%, 2%) scale(1.08) rotate(1deg); }
+  100% { transform: translate(-2%, 4%) scale(1.04) rotate(2deg); }
 }
 
 /* Fine film grain */
@@ -114,52 +106,162 @@ h1, p, figure { margin: 0; }
 /* Shortcut hints sit quietly after the label */
 kbd {
   font: inherit;
-  font-size: 0.62em;
+  font-family: var(--sans);
+  font-size: 0.52em;
   font-weight: 400;
-  letter-spacing: 0.02em;
-  margin-left: 0.7em;
-  opacity: 0.7;
+  text-transform: lowercase;
+  letter-spacing: 0.04em;
+  margin-left: 0.6em;
+  opacity: 0.65;
 }
 
-/* ---- Liquid glass ---- */
+/* ---- Liquid glass panels ---- */
+/* Panels: the same soft frosted glass as the buttons, a little more tinted to hold content */
 .glass {
-  background: var(--glass-fill), var(--glass-tint);
-  border: 1px solid var(--glass-rim);
-  box-shadow: var(--glass-light), var(--glass-drop);
-  backdrop-filter: var(--blur);
-  -webkit-backdrop-filter: var(--blur);
-  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow:
+    inset 0 0 22px rgba(255, 255, 255, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  backdrop-filter: blur(28px) saturate(140%);
+  -webkit-backdrop-filter: blur(28px) saturate(140%);
+  border-radius: 22px;
 }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* ---- Buttons: frosted glass tiles, after the run-tracker card ----
+   A rounded square of glass that blurs what's behind it: clearest in the middle, whiter toward
+   the edges, a bright inner rim with a hint of refraction (warm top-left, cool bottom-right).
+   The label sits in the bottom-left corner, the key hint in the top-right. */
 .glass-button {
+  --tile: 108px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto 1fr auto;
+  width: var(--tile);
+  height: var(--tile);
+  padding: 12px 14px 12px 14px;
   font: inherit;
-  font-size: 1.35rem;
+  font-size: 1.15rem;
   font-weight: 500;
-  color: var(--text);
-  min-height: 64px;
-  padding: 0.5em 1.6em;
-  border-radius: var(--radius);
-  border: 1px solid var(--glass-rim);
-  background: var(--glass-fill), var(--glass-tint);
-  box-shadow: var(--glass-light), var(--glass-drop);
-  backdrop-filter: var(--blur);
-  -webkit-backdrop-filter: var(--blur);
-  text-shadow: 0 1px 8px rgba(6, 30, 16, 0.35);
+  color: #fff;
+  text-align: left;
+  border: 0;
+  border-radius: 26px;
+  background: radial-gradient(75% 75% at 50% 50%, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0.10) 55%, rgba(255, 255, 255, 0.34) 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.7),
+    inset 0 0 16px rgba(255, 255, 255, 0.5),
+    inset 3px 3px 4px -1px rgba(255, 236, 168, 0.55),
+    inset -3px -3px 4px -1px rgba(160, 228, 255, 0.55),
+    0 14px 30px -14px rgba(20, 30, 20, 0.45);
+  backdrop-filter: blur(14px) saturate(135%) brightness(1.06);
+  -webkit-backdrop-filter: blur(14px) saturate(135%) brightness(1.06);
+  text-shadow: 0 1px 2px rgba(20, 30, 20, 0.45), 0 0 14px rgba(20, 30, 20, 0.3);
   cursor: pointer;
-  transition: transform 140ms ease, background 140ms ease;
+  transition: transform 160ms ease, background 160ms ease;
+}
+
+.glass-button .label {
+  grid-column: 1 / -1;
+  grid-row: 3;
+  align-self: end;
+  line-height: 1.1;
+}
+
+.glass-button kbd {
+  grid-column: 2;
+  grid-row: 1;
+  margin: 0;
+  justify-self: end;
+}
+
+.btn-icon {
+  grid-column: 1;
+  grid-row: 1;
+  width: 1.15em;
+  height: 1.15em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 1px 2px rgba(20, 30, 20, 0.4));
 }
 
 .glass-button:hover {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.32), rgba(255, 255, 255, 0.12)), var(--glass-tint);
+  background: radial-gradient(75% 75% at 50% 50%, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.16) 55%, rgba(255, 255, 255, 0.42) 100%);
 }
 
-.glass-button:active { transform: translateY(1px); }
+.glass-button:active { transform: scale(0.97); }
 
-/* The main action on each screen: a brighter pane */
+/* The main action: a little more frost at the edges and a brighter rim */
 .glass-button.primary {
   font-weight: 600;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.36), rgba(255, 255, 255, 0.14)), var(--glass-tint);
-  border-color: rgba(255, 255, 255, 0.8);
+  background: radial-gradient(75% 75% at 50% 50%, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.2) 55%, rgba(255, 255, 255, 0.5) 100%);
+  box-shadow:
+    inset 0 0 0 1.5px rgba(255, 255, 255, 0.9),
+    inset 0 0 20px rgba(255, 255, 255, 0.6),
+    inset 3px 3px 4px -1px rgba(255, 236, 168, 0.6),
+    inset -3px -3px 4px -1px rgba(160, 228, 255, 0.6),
+    0 14px 30px -14px rgba(20, 30, 20, 0.45);
+}
+
+/* ---- Round liquid-glass icons (top bar, and the arrows beside the letter) ---- */
+.icon-bubble {
+  position: relative;
+  width: 54px;
+  height: 54px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.13);
+  box-shadow:
+    inset 0 0 14px rgba(255, 255, 255, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  backdrop-filter: blur(28px) saturate(140%);
+  -webkit-backdrop-filter: blur(28px) saturate(140%);
+}
+
+button.icon-bubble { cursor: pointer; }
+button.icon-bubble:active { transform: scale(0.96); }
+
+.icon-bubble svg {
+  width: 46%;
+  height: 46%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.icon-bubble svg .fill { fill: currentColor; stroke: none; }
+
+/* Off: dimmed. On: full white with a small glowing lime light. */
+.icon-bubble[data-state="off"] svg { opacity: 0.5; }
+.icon-bubble[data-state="on"]::after,
+.icon-bubble[aria-pressed="true"]::after {
+  content: "";
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--lime);
+  box-shadow: 0 0 8px 2px rgba(207, 228, 138, 0.85);
 }
 
 /* ---- Top bar ---- */
@@ -190,29 +292,10 @@ kbd {
   filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.45)) drop-shadow(0 2px 8px rgba(6, 30, 16, 0.4));
 }
 
-.status-chips {
+.status-icons {
   display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
+  gap: 12px;
 }
-
-.chip {
-  font: inherit;
-  font-size: 0.95rem;
-  font-weight: 400;
-  color: var(--text);
-  padding: 0.4em 0.9em;
-  border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  background: var(--glass-fill), rgba(14, 44, 28, 0.35);
-  backdrop-filter: var(--blur);
-  -webkit-backdrop-filter: var(--blur);
-}
-
-.chip:empty { display: none; }
-
-.chip-button { cursor: pointer; font-weight: 500; }
 
 /* ---- Text screen ---- */
 #input-screen {
@@ -228,15 +311,16 @@ kbd {
 }
 
 h1 {
-  font-size: 2.8rem;
-  font-weight: 500;
+  font-size: 3rem;
+  font-weight: 400;
   line-height: 1.1;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.02em;
   margin-bottom: 0.7em;
 }
 
 label {
   display: block;
+  font-family: var(--sans);
   font-size: 1.15rem;
   color: var(--text-soft);
   margin-bottom: 0.5em;
@@ -262,7 +346,7 @@ textarea {
   margin-top: 26px;
 }
 
-.start-buttons .glass-button { flex: 1 1 150px; }
+.start-buttons { justify-content: center; }
 
 .form-error:empty { display: none; }
 .form-error {
@@ -283,12 +367,20 @@ textarea {
   padding: 84px 32px 3vh;
 }
 
+/* The camera window gives off light: a bright rim and a soft halo, like a lit screen */
 .camera-frame {
   flex: 1;
   min-height: 0;
   width: 100%;
   padding: 6px;
   border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 0 0 1px rgba(255, 255, 255, 0.25),
+    0 0 28px 4px rgba(240, 255, 225, 0.45),
+    0 0 90px 24px rgba(207, 228, 138, 0.30),
+    0 0 180px 60px rgba(238, 244, 236, 0.16);
 }
 
 .camera {
@@ -303,22 +395,19 @@ textarea {
 
 .camera-status {
   font-size: 1.7rem;
-  font-weight: 500;
+  font-weight: 400;
   letter-spacing: -0.01em;
   text-align: center;
-  max-width: 40ch;
+  max-width: 52ch;
   min-height: 1.4em;
-  text-shadow: 0 2px 16px rgba(6, 30, 16, 0.55);
+  text-shadow: var(--type-glow);
 }
 
 /* While listening, the Talk button glows softly so it's clear the mic is on */
-.listening #talk-button {
-  animation: listening 1.6s ease-in-out infinite;
-  border-color: #fff;
-}
+.listening #talk-button { animation: listening 1.6s ease-in-out infinite; }
 
 @keyframes listening {
-  50% { box-shadow: var(--glass-light), var(--glass-drop), 0 0 0 8px rgba(255, 255, 255, 0.18); }
+  50% { box-shadow: inset 0 0 0 2px #fff, inset 0 0 26px rgba(255, 255, 255, 0.8), 0 0 0 8px rgba(255, 255, 255, 0.18), 0 0 34px rgba(207, 228, 138, 0.6); }
 }
 
 /* ---- Lesson screen ---- */
@@ -346,16 +435,39 @@ textarea {
   min-width: 0;
 }
 
+/* The text-flower poster glows behind the letter: screen blend drops its dark ground,
+   leaving the pale flower of words; a radial mask fades its edges into the gradient. */
+.center { position: relative; }
+
+.flower {
+  position: absolute;
+  top: -6vh;
+  left: 50%;
+  width: min(62vh, 90vw);
+  height: 62vh;
+  transform: translateX(-50%);
+  background: url("/static/flower.jpg") 50% 22% / cover no-repeat;
+  mix-blend-mode: screen;
+  opacity: 0.55;
+  -webkit-mask-image: radial-gradient(closest-side, #000 55%, transparent 100%);
+  mask-image: radial-gradient(closest-side, #000 55%, transparent 100%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.char, .grids, .position, .feedback, .typed-text { position: relative; z-index: 1; }
+
 /* The one bold thing: the letter, lit softly from within */
 .char {
   font-size: 40vh;
   height: 40vh;
-  font-weight: 500;
-  letter-spacing: -0.04em;
+  font-weight: 300;
+  letter-spacing: 0;
   line-height: 1;
   display: flex;
   align-items: center;
-  text-shadow: 0 0 40px rgba(255, 255, 255, 0.3), 0 6px 36px rgba(6, 30, 16, 0.55);
+  color: rgba(255, 255, 255, 0.92);
+  text-shadow: 0 0 36px rgba(255, 255, 255, 0.4), 0 4px 30px rgba(6, 30, 16, 0.4);
 }
 
 .char.small { font-size: 9vh; font-weight: 500; }
@@ -375,6 +487,7 @@ textarea {
 }
 
 .grid-block figcaption {
+  font-family: var(--sans);
   font-size: 1rem;
   color: var(--text-soft);
   margin-top: 1vh;
@@ -406,6 +519,7 @@ textarea {
 }
 
 .position {
+  font-family: var(--sans);
   font-size: 1.15rem;
   color: var(--text-soft);
   margin-top: 1.6vh;
@@ -417,7 +531,7 @@ textarea {
   margin: 0.6vh 0 1vh;
   min-height: 1.4em;
   text-align: center;
-  text-shadow: 0 2px 14px rgba(6, 30, 16, 0.55);
+  text-shadow: var(--type-glow);
 }
 
 /* Type mode */
@@ -431,6 +545,7 @@ textarea {
 }
 
 .badge {
+  font-family: var(--sans);
   font-size: 1.05rem;
   font-weight: 500;
   padding: 0.35em 0.9em;
@@ -457,23 +572,12 @@ textarea {
   text-align: center;
 }
 
-.side-button {
-  width: min(9vw, 96px);
-  height: min(9vw, 96px);
-  padding: 0;
-  display: grid;
-  place-items: center;
+.icon-bubble.big {
+  width: min(8vw, 88px);
+  height: min(8vw, 88px);
 }
 
-.side-button svg {
-  width: 40%;
-  height: 40%;
-  fill: none;
-  stroke: #fff;
-  stroke-width: 1.8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
+.icon-bubble.big svg { stroke-width: 1.8; width: 40%; height: 40%; }
 
 .controls {
   display: flex;
@@ -485,15 +589,16 @@ textarea {
 /* ---- Small screens ---- */
 @media (max-width: 640px) {
   .topbar { padding: 14px 16px; }
-  .status-chips { display: none; }
+  .status-icons { gap: 8px; }
+  .icon-bubble { width: 46px; height: 46px; }
   .panel { padding: 26px; }
   h1 { font-size: 2.1rem; }
-  .glass-button { font-size: 1.2rem; min-height: 58px; padding: 0.5em 1.2em; }
+  .glass-button { --tile: 88px; font-size: 1rem; border-radius: 22px; }
   /* Let screens grow and scroll instead of squeezing */
   #reader-screen, #camera-screen { height: auto; min-height: 100vh; padding: 72px 16px 3vh; }
   .char { font-size: 30vh; height: 30vh; }
   .grids { gap: 12vw; padding: 2vh 7vw; }
-  .side-button { width: 52px; height: 52px; }
+  .icon-bubble.big { width: 52px; height: 52px; }
   .stage { gap: 8px; }
   .camera-frame { flex: none; aspect-ratio: 4 / 3; }
   .controls { margin-top: 2vh; }
@@ -505,20 +610,23 @@ textarea {
   .glass-button { transition: none; }
 }
 
-/* ---- High contrast: plain black and white, no glass (app.js sets data-contrast) ---- */
-:root[data-contrast="high"] { font-weight: 500; }
+/* ---- High contrast: plain black and white in a bold sans, no glass (app.js sets data-contrast) ---- */
+:root[data-contrast="high"] { font-family: var(--sans); font-weight: 600; }
 :root[data-contrast="high"] body { background: #000; }
 :root[data-contrast="high"] body::after,
-:root[data-contrast="high"] .backdrop { display: none; }
+:root[data-contrast="high"] .backdrop,
+:root[data-contrast="high"] .flower { display: none; }
 
 :root[data-contrast="high"] .glass,
 :root[data-contrast="high"] .glass-button,
-:root[data-contrast="high"] .chip,
+:root[data-contrast="high"] .icon-bubble,
 :root[data-contrast="high"] textarea,
 :root[data-contrast="high"] .form-error {
   background: #000;
+  color: #fff;
   border: 3px solid #fff;
   box-shadow: none;
+  filter: none;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
   text-shadow: none;
@@ -533,9 +641,12 @@ textarea {
 :root[data-contrast="high"] .dot { border: 3px solid #fff; }
 :root[data-contrast="high"] .dot.raised { box-shadow: none; }
 :root[data-contrast="high"] .logo-dots { filter: none; }
+:root[data-contrast="high"] .icon-bubble[data-state="off"] svg { opacity: 1; }
+:root[data-contrast="high"] .icon-bubble::after { background: #fff; box-shadow: none; }
 
 :root[data-contrast="high"] .glass-button:hover,
-:root[data-contrast="high"] .chip-button[aria-pressed="true"],
+:root[data-contrast="high"] .glass-button.primary,
+:root[data-contrast="high"] .icon-bubble[aria-pressed="true"],
 :root[data-contrast="high"] .badge.on,
 :root[data-contrast="high"] .listening #talk-button {
   background: #fff;

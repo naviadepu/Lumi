@@ -607,7 +607,14 @@ let snapping = false;
 
 const cameraOpen = () => !cameraScreen.hidden;
 
-// Corner status: "Camera: allowed / blocked / not allowed yet", kept up to date.
+// The round status icons at the top: lit when on; the words go to screen readers and the tooltip.
+function setIconStatus(icon, on, words) {
+  icon.dataset.state = on ? "on" : "off";
+  icon.title = words;
+  icon.querySelector(".sr-only").textContent = words;
+}
+
+// Camera status: "Camera: allowed / blocked / not allowed yet", kept up to date.
 let cameraPermission = "unknown";
 const CAMERA_STATES = { granted: "Camera: allowed", denied: "Camera: blocked", prompt: "Camera: not allowed yet" };
 
@@ -616,7 +623,7 @@ async function watchCameraPermission() {
     const status = await navigator.permissions.query({ name: "camera" });
     const show = () => {
       cameraPermission = status.state;
-      cameraPermissionEl.textContent = CAMERA_STATES[status.state] || "";
+      setIconStatus(cameraPermissionEl, status.state === "granted", CAMERA_STATES[status.state] || "Camera");
     };
     show();
     status.onchange = show;
@@ -1084,7 +1091,7 @@ document.addEventListener("keyup", (e) => {
 // ---------------------------------------------------------------- server link
 
 function setArduinoStatus(connected) {
-  statusEl.textContent = connected ? "Arduino: connected" : "Arduino: not connected";
+  setIconStatus(statusEl, connected, connected ? "Remote: connected" : "Remote: not connected");
   // A freshly plugged-in board is blank, so send it the current character.
   if (connected && readerOpen() && mode !== "type") sendToArduino(steps[index]);
 }
