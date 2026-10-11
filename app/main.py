@@ -107,12 +107,22 @@ arduino = ArduinoLink(
     exclude_ports=(WHEEL_PORT,),  # auto-detect must not grab the wheel board
 )
 
+last_show = None  # (char, pattern) of the current target, for a board that connects later
+
+
+def wheel_status(connected):
+    log.info("Wheel board %s", "connected" if connected else "disconnected")
+    if connected and last_show:
+        wheel_board.send_show(*last_show)  # a freshly opened Mega has just restarted: catch it up
+    broadcast_from_thread({"type": "status", "wheel": connected})
+
+
 # The wheel board only takes SHOW lines; what it prints back (AT a, NOT ON WHEEL ...) is just logged.
 wheel_board = ArduinoLink(
     port=WHEEL_PORT,
     baud=ARDUINO_BAUD,
     on_line=lambda line: log.info("Wheel board: %s", line),
-    on_status=lambda connected: log.info("Wheel board %s", "connected" if connected else "disconnected"),
+    on_status=wheel_status,
     name="Wheel board",
 ) if WHEEL_PORT else None
 
@@ -132,6 +142,8 @@ async def lifespan(app):
     arduino.start()
     if wheel_board:
         wheel_board.start()
+    else:
+        log.info("ARDUINO_WHEEL_PORT is not set in .env: one-board setup (no separate wheel board)")
     if sys.stdin and sys.stdin.isatty():
         threading.Thread(target=console_input_loop, daemon=True, name="console").start()
         log.info("Test mode: type remote lines here, e.g. CELL 1 then CHAR 1 a (or DOT 1, BTN ENTER)")
@@ -197,6 +209,8 @@ class ShowRequest(BaseModel):
 @app.post("/api/show")
 def show(req: ShowRequest):
     """The page calls this whenever the current character changes."""
+    global last_show
+    last_show = (req.char, req.pattern)
     arduino.send_show(req.char, req.pattern)
     if wheel_board:
         wheel_board.send_show(req.char, req.pattern)
@@ -295,7 +309,11 @@ async def speak(text: str = Query(min_length=1, max_length=MAX_SPEAK_CHARS)):
 async def websocket(ws: WebSocket):
     await ws.accept()
     clients.add(ws)
-    await ws.send_json({"type": "status", "arduino": arduino.connected})
+    await ws.send_json({
+        "type": "status",
+        "arduino": arduino.connected,
+        "wheel": wheel_board.connected if wheel_board else None,  # None: no separate wheel board
+    })
     try:
         while True:
             await ws.receive_text()  # we only push from server; just keep it open

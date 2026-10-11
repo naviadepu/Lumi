@@ -34,8 +34,8 @@ a dot toggles it and Enter commits the cell. See "The remote" below.
 Needs Python 3.10+.
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
+python3 -m venv .venv              # Windows: py -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate (Git Bash: source .venv/Scripts/activate)
 pip install -r requirements.txt
 cp .env.example .env               # then paste your ElevenLabs key into .env
 ```
@@ -47,21 +47,27 @@ For Snap, get a free Gemini key at https://aistudio.google.com/apikey and set
 
 ## Run
 
-**Hands-free (for the learner and the demo), macOS:**
+**Hands-free (for the learner and the demo), macOS, Windows or Linux:**
 
 ```bash
 ./start.sh
 ```
 
+On Windows, run it from Git Bash in the Lumi folder (`sh start.sh` also works). It needs the
+`.venv` from Setup, made on that computer; it opens Chrome, or Edge if Chrome isn't installed.
+If the window shows `$'\r': command not found`, the file got Windows line endings: run
+`sed -i 's/\r$//' start.sh` once in Git Bash (this repo's `.gitattributes` prevents it for new clones).
+
 It starts the server and opens Chrome as a full-screen app that may use the camera and
 microphone and play sound without anyone clicking first. The camera turns on by itself and the voice says
 "Welcome to Lumi. Hold up any object to the camera and keep it still."
-Nothing on screen needs to be found or clicked. Quit with Cmd+Q.
+Nothing on screen needs to be found or clicked. Quit with Cmd+Q (Windows: Alt+F4), and stop
+the server with Ctrl+C in the terminal.
 
 **For development:**
 
 ```bash
-source .venv/bin/activate
+source .venv/bin/activate          # Windows Git Bash: source .venv/Scripts/activate
 python -m app.main
 ```
 

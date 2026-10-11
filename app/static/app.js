@@ -23,6 +23,7 @@ const positionEl = $("position");
 const feedbackEl = $("feedback");
 const typedTextEl = $("typed-text");
 const statusEl = $("arduino-status");
+const wheelStatusEl = $("wheel-status");
 const cameraScreen = $("camera-screen");
 const video = $("camera");
 const cameraStatus = $("camera-status");
@@ -1133,6 +1134,12 @@ function setArduinoStatus(connected) {
   if (connected && readerOpen() && mode !== "type") sendToArduino(steps[index]);
 }
 
+// Two-board setup only: the Mega wheel's own icon. null = one board, so the icon stays hidden.
+function setWheelStatus(connected) {
+  wheelStatusEl.hidden = connected === null || connected === undefined;
+  setIconStatus(wheelStatusEl, connected === true, connected ? "Wheel: connected" : "Wheel: not connected");
+}
+
 // A cell committed on braille_remote.ino (Enter pressed on the remote).
 function remoteCommit(msg) {
   if (mode === "learn") {
@@ -1179,11 +1186,14 @@ function connectWebSocket() {
   const ws = new WebSocket(`${protocol}//${location.host}/ws`);
   ws.onmessage = (event) => {
     const msg = JSON.parse(event.data);
-    if (msg.type === "status") setArduinoStatus(msg.arduino);
-    else handleRemote(msg);
+    if (msg.type === "status") {
+      if ("arduino" in msg) setArduinoStatus(msg.arduino);
+      if ("wheel" in msg) setWheelStatus(msg.wheel);
+    } else handleRemote(msg);
   };
   ws.onclose = () => {
     setArduinoStatus(false);
+    if (!wheelStatusEl.hidden) setWheelStatus(false);
     setTimeout(connectWebSocket, 2000);
   };
 }

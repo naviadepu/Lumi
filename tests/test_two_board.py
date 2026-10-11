@@ -153,3 +153,24 @@ def test_tool_follow_mode():
     lesson = tool.Lesson(follow=True)
     assert lesson.on_remote_line("CHAR 13 n")[0] == ("wheel", "n")
     assert lesson.on_remote_line("CHAR 25 d") == [("say", "You typed D. It isn't on the wheel (A B C E I L N P).")]
+
+
+def test_wheel_that_connects_late_gets_the_current_letter(reload_main, monkeypatch):
+    m = reload_main(ARDUINO_WHEEL_PORT="mock")
+    sent = []
+    monkeypatch.setattr(m, "broadcast_from_thread", sent.append)
+    with TestClient(m.app) as client:
+        with client.websocket_connect("/ws") as ws:
+            assert ws.receive_json() == {"type": "status", "arduino": False, "wheel": False}
+        client.post("/api/show", json={"char": "n", "pattern": "101110"})  # the wheel isn't open yet
+        m.wheel_board.serial = wheel = FakeSerial()
+        m.wheel_board.on_status(True)  # what ArduinoLink does once the port opens
+        m.wheel_board.serial = None
+    assert wheel.written == ["SHOW n 101110\n"]
+    assert {"type": "status", "wheel": True} in sent
+
+
+def test_one_board_page_status_has_no_wheel(reload_main):
+    m = reload_main()
+    with TestClient(m.app) as client, client.websocket_connect("/ws") as ws:
+        assert ws.receive_json() == {"type": "status", "arduino": False, "wheel": None}
