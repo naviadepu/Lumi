@@ -43,7 +43,7 @@ tts = ElevenLabsTTS(
     model_id=os.getenv("ELEVENLABS_MODEL_ID", "eleven_multilingual_v2").strip(),
 )
 
-# Letters on the rotating braille wheel (must match WHEEL_LETTERS in braille_remote.ino).
+# Letters on the rotating braille wheel (must match WHEEL_LETTERS in braille_wheel.ino or wheel_mega.ino).
 WHEEL_LETTERS = "".join(sorted(set(os.getenv("WHEEL_LETTERS", "abceilnp").strip().lower())))
 # Wheel-only: lessons only use wheel letters (others are skipped with an explanation).
 WHEEL_ONLY = os.getenv("WHEEL_ONLY", "true").strip().lower() in ("1", "true", "yes")
@@ -95,12 +95,26 @@ def handle_line(line, source):
         broadcast_from_thread(message)
 
 
+ARDUINO_BAUD = int(os.getenv("ARDUINO_BAUD", "9600"))
+# Two-board setup: the wheel runs on its own board (wheel_mega.ino on a Mega). Empty = one board.
+WHEEL_PORT = os.getenv("ARDUINO_WHEEL_PORT", "").strip()
+
 arduino = ArduinoLink(
     port=os.getenv("ARDUINO_PORT", "").strip(),
-    baud=int(os.getenv("ARDUINO_BAUD", "9600")),
+    baud=ARDUINO_BAUD,
     on_line=lambda line: handle_line(line, "Arduino"),
     on_status=lambda connected: broadcast_from_thread({"type": "status", "arduino": connected}),
+    exclude_ports=(WHEEL_PORT,),  # auto-detect must not grab the wheel board
 )
+
+# The wheel board only takes SHOW lines; what it prints back (AT a, NOT ON WHEEL ...) is just logged.
+wheel_board = ArduinoLink(
+    port=WHEEL_PORT,
+    baud=ARDUINO_BAUD,
+    on_line=lambda line: log.info("Wheel board: %s", line),
+    on_status=lambda connected: log.info("Wheel board %s", "connected" if connected else "disconnected"),
+    name="Wheel board",
+) if WHEEL_PORT else None
 
 
 def console_input_loop():
@@ -116,6 +130,8 @@ async def lifespan(app):
     global main_loop
     main_loop = asyncio.get_running_loop()
     arduino.start()
+    if wheel_board:
+        wheel_board.start()
     if sys.stdin and sys.stdin.isatty():
         threading.Thread(target=console_input_loop, daemon=True, name="console").start()
         log.info("Test mode: type remote lines here, e.g. CELL 1 then CHAR 1 a (or DOT 1, BTN ENTER)")
@@ -125,6 +141,8 @@ async def lifespan(app):
         log.info("No ElevenLabs key/voice in .env: the page will use browser speech")
     yield
     arduino.stop()
+    if wheel_board:
+        wheel_board.stop()
 
 
 app = FastAPI(title="Lumi", lifespan=lifespan)
@@ -180,6 +198,8 @@ class ShowRequest(BaseModel):
 def show(req: ShowRequest):
     """The page calls this whenever the current character changes."""
     arduino.send_show(req.char, req.pattern)
+    if wheel_board:
+        wheel_board.send_show(req.char, req.pattern)
     return {"ok": True}
 
 
@@ -187,6 +207,7 @@ def show(req: ShowRequest):
 def status():
     return {
         "arduino": arduino.connected,
+        "wheel_board": wheel_board.connected if wheel_board else None,  # None = one-board setup
         "elevenlabs": tts.enabled,
         "vision": vision.enabled,
         "ask": assistant.enabled,
