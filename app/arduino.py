@@ -1,8 +1,12 @@
-"""Serial link to the braille remote (braille_remote/braille_remote.ino).
+"""Serial link to the braille boards.
+
+One board (braille_wheel/braille_wheel.ino) is both the remote and the wheel. In the
+two-board setup the remote is braille_remote/braille_remote.ino on an Uno, and the wheel
+is wheel_mega/wheel_mega.ino on a Mega with its own ArduinoLink (ARDUINO_WHEEL_PORT).
 
 Arduino -> laptop:  see RemoteParser below (CELL / MODE / CHAR / UNKNOWN lines).
                     Also accepted, for testing: "DOT 1".."DOT 6", "BTN ENTER/NEXT/PREV/REPEAT".
-Laptop -> Arduino:  "SHOW A 100000\n" (current character; the remote ignores it).
+Laptop -> Arduino:  "SHOW A 100000\n" (current character; a remote-only board ignores it).
 
 If no Arduino is plugged in we run in mock mode: SHOW lines are only logged.
 A background thread keeps retrying, so you can plug the board in while the
@@ -49,7 +53,7 @@ LEGACY_NAMES = {
 
 
 class RemoteParser:
-    """Turns lines from braille_remote.ino into messages for the page.
+    """Turns lines from the remote (braille_remote.ino or braille_wheel.ino) into messages for the page.
 
     The remote keeps the dot state itself (bit 0 = dot 1 ... bit 5 = dot 6):
         READY                                    sketch booted
@@ -122,8 +126,12 @@ RETRY_SECONDS = 3
 ARDUINO_HINTS = ("arduino", "usbmodem", "usbserial", "ttyacm", "ttyusb", "ch340", "cp210", "wchusbserial")
 
 
-def find_arduino_port():
+def find_arduino_port(exclude=()):
+    """First port that looks like an Arduino, skipping the ports in exclude (e.g. the wheel board's)."""
+    skip = {p.lower() for p in exclude if p}
     for port in list_ports.comports():
+        if port.device.lower() in skip:
+            continue
         text = f"{port.device} {port.description} {port.manufacturer or ''}".lower()
         if any(hint in text for hint in ARDUINO_HINTS):
             return port.device
@@ -131,13 +139,17 @@ def find_arduino_port():
 
 
 class ArduinoLink:
-    def __init__(self, port, baud, on_line, on_status):
+    def __init__(self, port, baud, on_line, on_status, exclude_ports=(), name="Arduino"):
         """
-        port:      serial port like /dev/cu.usbmodem1101 or COM3; "" = auto-detect; "mock" = never connect
-        on_line:   called with each line the Arduino sends (from a background thread)
-        on_status: called with True/False when the connection changes
+        port:          serial port like /dev/cu.usbmodem1101 or COM3; "" = auto-detect; "mock" = never connect
+        on_line:       called with each line the Arduino sends (from a background thread)
+        on_status:     called with True/False when the connection changes
+        exclude_ports: ports auto-detect must skip (another link's port)
+        name:          used in log messages
         """
         self.port_setting = port
+        self.exclude_ports = tuple(exclude_ports)
+        self.name = name
         self.baud = baud
         self.on_line = on_line
         self.on_status = on_status
@@ -150,7 +162,7 @@ class ArduinoLink:
         return self.serial is not None
 
     def start(self):
-        threading.Thread(target=self._run, daemon=True, name="arduino").start()
+        threading.Thread(target=self._run, daemon=True, name=self.name.lower().replace(" ", "-")).start()
 
     def stop(self):
         self.stopped.set()
@@ -162,18 +174,18 @@ class ArduinoLink:
         line = f"SHOW {char} {pattern}"
         port = self.serial  # local copy: the reader thread may set self.serial to None
         if port is None:
-            log.info("[mock] would send: %s", line)
+            log.info("[mock] %s would get: %s", self.name, line)
             return
         try:
             with self.write_lock:
                 port.write((line + "\n").encode("ascii"))
-            log.info("sent: %s", line)
+            log.info("sent to %s: %s", self.name, line)
         except (serial.SerialException, OSError) as e:
-            log.warning("write failed: %s", e)
+            log.warning("%s write failed: %s", self.name, e)
             self._disconnect()
 
     def _connect(self):
-        port = self.port_setting or find_arduino_port()
+        port = self.port_setting or find_arduino_port(self.exclude_ports)
         if not port or port.lower() == "mock":
             return False
         try:
@@ -184,7 +196,7 @@ class ArduinoLink:
         except (serial.SerialException, OSError):
             return False
         self.serial = conn
-        log.info("Arduino connected on %s at %d baud", port, self.baud)
+        log.info("%s connected on %s at %d baud", self.name, port, self.baud)
         self.on_status(True)
         return True
 
@@ -196,14 +208,16 @@ class ArduinoLink:
         except Exception:
             pass
         self.serial = None
-        log.info("Arduino disconnected, back to mock mode")
+        log.info("%s disconnected, back to mock mode", self.name)
         self.on_status(False)
 
     def _run(self):
         if self.port_setting.lower() == "mock":
-            log.info("ARDUINO_PORT=mock: running in mock mode")
+            log.info("%s: port is 'mock', running in mock mode", self.name)
+        elif self.port_setting:
+            log.info("%s: waiting for %s (mock mode until it opens)", self.name, self.port_setting)
         else:
-            log.info("Looking for an Arduino (mock mode until one is found)")
+            log.info("%s: looking for a board (mock mode until one is found)", self.name)
         while not self.stopped.is_set():
             if not self.connected:
                 if not self._connect():
@@ -212,7 +226,7 @@ class ArduinoLink:
             try:
                 raw = self.serial.readline()
             except (serial.SerialException, OSError) as e:
-                log.warning("read failed: %s", e)
+                log.warning("%s read failed: %s", self.name, e)
                 self._disconnect()
                 continue
             line = raw.decode("ascii", errors="ignore").strip()

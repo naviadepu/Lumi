@@ -1,4 +1,6 @@
-// Braille remote — 6 dot buttons + Enter, Arduino Uno
+// Braille remote — 6 dot buttons + Enter, Arduino Uno. Remote only.
+// Used in the two-board setup, with the wheel on a Mega (wheel_mega/wheel_mega.ino).
+// For one board that is both the remote and the wheel, use braille_wheel/braille_wheel.ino.
 // Wiring: dots 1-6 -> D2-D7, Enter -> D8, other leg of each button -> GND
 // Uses INPUT_PULLUP, so pressed = LOW. No resistors needed.
 //

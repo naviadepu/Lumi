@@ -43,7 +43,7 @@ tts = ElevenLabsTTS(
     model_id=os.getenv("ELEVENLABS_MODEL_ID", "eleven_multilingual_v2").strip(),
 )
 
-# Letters on the rotating braille wheel (must match WHEEL_LETTERS in braille_remote.ino).
+# Letters on the rotating braille wheel (must match WHEEL_LETTERS in braille_wheel.ino or wheel_mega.ino).
 WHEEL_LETTERS = "".join(sorted(set(os.getenv("WHEEL_LETTERS", "abceilnp").strip().lower())))
 # Wheel-only: lessons only use wheel letters (others are skipped with an explanation).
 WHEEL_ONLY = os.getenv("WHEEL_ONLY", "true").strip().lower() in ("1", "true", "yes")
@@ -95,12 +95,36 @@ def handle_line(line, source):
         broadcast_from_thread(message)
 
 
+ARDUINO_BAUD = int(os.getenv("ARDUINO_BAUD", "9600"))
+# Two-board setup: the wheel runs on its own board (wheel_mega.ino on a Mega). Empty = one board.
+WHEEL_PORT = os.getenv("ARDUINO_WHEEL_PORT", "").strip()
+
 arduino = ArduinoLink(
     port=os.getenv("ARDUINO_PORT", "").strip(),
-    baud=int(os.getenv("ARDUINO_BAUD", "9600")),
+    baud=ARDUINO_BAUD,
     on_line=lambda line: handle_line(line, "Arduino"),
     on_status=lambda connected: broadcast_from_thread({"type": "status", "arduino": connected}),
+    exclude_ports=(WHEEL_PORT,),  # auto-detect must not grab the wheel board
 )
+
+last_show = None  # (char, pattern) of the current target, for a board that connects later
+
+
+def wheel_status(connected):
+    log.info("Wheel board %s", "connected" if connected else "disconnected")
+    if connected and last_show:
+        wheel_board.send_show(*last_show)  # a freshly opened Mega has just restarted: catch it up
+    broadcast_from_thread({"type": "status", "wheel": connected})
+
+
+# The wheel board only takes SHOW lines; what it prints back (AT a, NOT ON WHEEL ...) is just logged.
+wheel_board = ArduinoLink(
+    port=WHEEL_PORT,
+    baud=ARDUINO_BAUD,
+    on_line=lambda line: log.info("Wheel board: %s", line),
+    on_status=wheel_status,
+    name="Wheel board",
+) if WHEEL_PORT else None
 
 
 def console_input_loop():
@@ -116,6 +140,10 @@ async def lifespan(app):
     global main_loop
     main_loop = asyncio.get_running_loop()
     arduino.start()
+    if wheel_board:
+        wheel_board.start()
+    else:
+        log.info("ARDUINO_WHEEL_PORT is not set in .env: one-board setup (no separate wheel board)")
     if sys.stdin and sys.stdin.isatty():
         threading.Thread(target=console_input_loop, daemon=True, name="console").start()
         log.info("Test mode: type remote lines here, e.g. CELL 1 then CHAR 1 a (or DOT 1, BTN ENTER)")
@@ -125,6 +153,8 @@ async def lifespan(app):
         log.info("No ElevenLabs key/voice in .env: the page will use browser speech")
     yield
     arduino.stop()
+    if wheel_board:
+        wheel_board.stop()
 
 
 app = FastAPI(title="Lumi", lifespan=lifespan)
@@ -179,7 +209,11 @@ class ShowRequest(BaseModel):
 @app.post("/api/show")
 def show(req: ShowRequest):
     """The page calls this whenever the current character changes."""
+    global last_show
+    last_show = (req.char, req.pattern)
     arduino.send_show(req.char, req.pattern)
+    if wheel_board:
+        wheel_board.send_show(req.char, req.pattern)
     return {"ok": True}
 
 
@@ -187,6 +221,7 @@ def show(req: ShowRequest):
 def status():
     return {
         "arduino": arduino.connected,
+        "wheel_board": wheel_board.connected if wheel_board else None,  # None = one-board setup
         "elevenlabs": tts.enabled,
         "vision": vision.enabled,
         "ask": assistant.enabled,
@@ -274,7 +309,11 @@ async def speak(text: str = Query(min_length=1, max_length=MAX_SPEAK_CHARS)):
 async def websocket(ws: WebSocket):
     await ws.accept()
     clients.add(ws)
-    await ws.send_json({"type": "status", "arduino": arduino.connected})
+    await ws.send_json({
+        "type": "status",
+        "arduino": arduino.connected,
+        "wheel": wheel_board.connected if wheel_board else None,  # None: no separate wheel board
+    })
     try:
         while True:
             await ws.receive_text()  # we only push from server; just keep it open

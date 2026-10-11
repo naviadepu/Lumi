@@ -23,16 +23,19 @@ Labeling your own things is one of the first everyday uses of braille after visi
 Speech uses ElevenLabs, with the browser's built-in voice as a fallback. Everything
 works without the remote: the keyboard and on-screen buttons do the same things.
 
-The remote is an Arduino Uno running `braille_remote/braille_remote.ino`. Pressing a dot
-toggles it; Enter commits the cell. See "The remote" below.
+The hardware comes in two setups. **One board:** an Arduino Uno running
+`braille_wheel/braille_wheel.ino` is both the remote and the wheel. **Two boards:** an Uno
+running `braille_remote/braille_remote.ino` is the remote, and an Arduino Mega running
+`wheel_mega/wheel_mega.ino` turns the wheel; see "Two-board setup" below. Either way, pressing
+a dot toggles it and Enter commits the cell. See "The remote" below.
 
 ## Setup (once)
 
 Needs Python 3.10+.
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
+python3 -m venv .venv              # Windows: py -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate (Git Bash: source .venv/Scripts/activate)
 pip install -r requirements.txt
 cp .env.example .env               # then paste your ElevenLabs key into .env
 ```
@@ -44,21 +47,27 @@ For Snap, get a free Gemini key at https://aistudio.google.com/apikey and set
 
 ## Run
 
-**Hands-free (for the learner and the demo), macOS:**
+**Hands-free (for the learner and the demo), macOS, Windows or Linux:**
 
 ```bash
 ./start.sh
 ```
 
+On Windows, run it from Git Bash in the Lumi folder (`sh start.sh` also works). It needs the
+`.venv` from Setup, made on that computer; it opens Chrome, or Edge if Chrome isn't installed.
+If the window shows `$'\r': command not found`, the file got Windows line endings: run
+`sed -i 's/\r$//' start.sh` once in Git Bash (this repo's `.gitattributes` prevents it for new clones).
+
 It starts the server and opens Chrome as a full-screen app that may use the camera and
 microphone and play sound without anyone clicking first. The camera turns on by itself and the voice says
 "Welcome to Lumi. Hold up any object to the camera and keep it still."
-Nothing on screen needs to be found or clicked. Quit with Cmd+Q.
+Nothing on screen needs to be found or clicked. Quit with Cmd+Q (Windows: Alt+F4), and stop
+the server with Ctrl+C in the terminal.
 
 **For development:**
 
 ```bash
-source .venv/bin/activate
+source .venv/bin/activate          # Windows Git Bash: source .venv/Scripts/activate
 python -m app.main
 ```
 
@@ -238,8 +247,8 @@ ULN2003 IN1-IN4     -> A1, A2, A3, A4              (driver powered from 5V)
 Home sensor         -> A5 (LOW at home; set HOME_SENSOR_PIN = -1 if you have none)
 ```
 
-1. Open `braille_remote/braille_remote.ino` in the Arduino IDE (it must stay in the
-   `braille_remote` folder), pick Arduino Uno and its port, and Upload. No extra libraries.
+1. Open `braille_wheel/braille_wheel.ino` in the Arduino IDE (it must stay in the
+   `braille_wheel` folder), pick Arduino Uno and its port, and Upload. No extra libraries.
 2. Calibrate: at power-on the wheel finds home, then goes to slot 0 (A). Adjust
    `HOME_OFFSET_STEPS` until A sits exactly under the finger, and `WHEEL_DIRECTION` if it
    turns the wrong way. Letters go round the disc in `WHEEL_LETTERS` order, evenly spaced.
@@ -263,6 +272,56 @@ Serial protocol (9600 baud, one line each). Both short and long names work:
 Enter on the capital or number sign prints no character, only `CELL 0` and `MODE`; the
 server reports that to the page as a commit of the sign.
 
+### Two-board setup: Uno remote + Mega wheel
+
+The remote and the wheel are separate boards, each on its own USB cable. They are not wired
+to each other; Lumi talks to both.
+
+```
+Uno  (braille_remote/braille_remote.ino) --USB--> laptop: Lumi --USB--> Mega (wheel_mega/wheel_mega.ino)
+```
+
+Uno remote: dots 1-6 -> D2-D7, Enter -> D8, the other leg of every button -> GND (no LEDs).
+
+Mega wheel: 28BYJ-48 stepper on a ULN2003 driver. IN1-IN4 -> D9, D10, D11, D12; driver + -> 5V,
+- -> GND. If the Mega resets when the motor starts, power the driver from a separate 5 V supply
+and join its GND to the Mega's GND. The disc has the 8 letters A B C E I L N P, 45 degrees apart,
+in `WHEEL_LETTERS` order.
+
+1. Upload `braille_remote/braille_remote.ino` to the Uno and `wheel_mega/wheel_mega.ino` to the
+   Mega (Board: Arduino Mega or Mega 2560). Each sketch must stay in its own folder.
+2. Calibrate the wheel once (Serial Monitor on the Mega, 9600 baud, "New Line"). It's saved
+   on the Mega, so it survives power-off and the reset that happens when Lumi opens the port.
+   - Line up A: nudge with `+` / `-` (small steps; `++` / `--` are 10 times bigger) until A
+     is under the finger, then type `zero`.
+   - Measure one turn: type `calstart`, then `turn`, then nudge until A is back under the
+     finger, then `calend`. (If you already know the number, `rev 8152` sets it.)
+   - Fine-tune a letter: type it (e.g. `l`), nudge it into place, type `fix`. `evenly` undoes
+     all fixes, `info` prints the calibration, `help` lists every command.
+3. Close the Serial Monitor and quit the IDE.
+4. In `.env`, set `ARDUINO_WHEEL_PORT` to the Mega's port (e.g. `COM6`) and `ARDUINO_PORT` to
+   the Uno's (or leave it empty: auto-detect skips the wheel's port). To see which is which:
+   `python tools/remote_to_wheel.py --list`.
+5. Start `python -m app.main`. Every new target is sent to both boards: the Uno ignores it and
+   the Mega turns to that letter and prints `AT <letter>`. A pattern that isn't on the wheel
+   prints `NOT ON WHEEL <dots>` and the wheel stays put. `/api/status` shows
+   `"wheel_board": true` once the Mega is connected.
+
+Test without Lumi (stop Lumi first; only one program can use a port):
+- `tools/wheel_test.html`: open it in Chrome or Edge, connect each board, and drive the wheel
+  and its calibration with buttons. "Practice" runs a lesson using the remote.
+- `python tools/remote_to_wheel.py --remote COM3 --wheel COM6`: the same practice lesson in a
+  terminal. Add `--follow` to make the wheel turn to whatever wheel letter you type.
+
+| Problem | Fix |
+| --- | --- |
+| `Access is denied` / `could not open port` | Close the Serial Monitor, the test page and any other program using the port; replug |
+| `A device attached to the system is not functioning` | Unplug the board and plug it back in |
+| Wheel stops halfway to each letter | Measure one turn again (`calstart` ... `calend`) |
+| Motor hums but doesn't turn, or one direction is slow | An IN1-IN4 wire is loose or in the wrong order |
+| Wheel turns the wrong way | Set `DIRECTION = -1` in `wheel_mega.ino` |
+| Wrong letter under the finger after moving the disc | Line up A again and type `zero` |
+
 ## How it fits together
 
 ```
@@ -283,7 +342,10 @@ browser (app/static)  --HTTP-->  FastAPI (app/main.py)  --HTTPS-->  ElevenLabs (
 | `app/arduino.py` | Serial connection, auto-detect, reconnect, mock mode, remote protocol parser |
 | `app/main.py` | Web server: `/api/steps`, `/api/show`, `/speak`, `/ws`, console test mode |
 | `app/static/` | The page: `index.html`, `style.css`, `app.js` (Learn, Read, Type) |
-| `braille_remote/` | Arduino sketch for the remote |
+| `braille_wheel/` | One-board sketch: remote, LEDs and wheel on one Uno |
+| `braille_remote/` | Two-board setup: remote-only sketch for the Uno |
+| `wheel_mega/` | Two-board setup: stepper wheel sketch for the Mega (calibration saved in EEPROM) |
+| `tools/` | Two-board test tools: `wheel_test.html` (Web Serial panel) and `remote_to_wheel.py` |
 | `braille_interface.html` | Standalone Web Serial test page for the remote (no server needed) |
 | `tests/` | Braille lookup, coach, vision, assistant, wheel and serial protocol tests |
 
